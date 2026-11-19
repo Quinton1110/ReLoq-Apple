@@ -1,0 +1,4 @@
+[submodule "Engine/Reloq-C"]
+	path = Engine/Reloq-C
+	url = https://github.com/Quinton1110/Reloq-C.git
+	branch = apple-fixes

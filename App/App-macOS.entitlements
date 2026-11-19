@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The Mac app is sandboxed, as Sapple's is (an AUv3 that declares sandboxSafe lives in a sandboxed host). -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- The voice settings and dictionaries the extension reads. A Mac app group must start with the team ID;
+	     a team-prefixed group needs no provisioning profile for a Developer ID app (Shared/VoiceSettings.swift). -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>ZGJQ5DZFK2.com.quinton.eloquencevoices</string>
+	</array>
+	<!-- The community dictionary download (App/DictionaryUpdater.swift, GitHub). The app only; the extension has no network. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+</dict>
+</plist>

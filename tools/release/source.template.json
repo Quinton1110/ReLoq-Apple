@@ -1,0 +1,25 @@
+{
+  "name": "ReLoq Apple",
+  "identifier": "com.quinton.reloqapple.source",
+  "sourceURL": "@RELEASE_URL@source.json",
+  "website": "@RELEASE_URL@",
+  "apps": [
+    {
+      "name": "ReLoq Apple",
+      "bundleIdentifier": "com.quinton.eloquencevoices",
+      "developerName": "Quinton Williams",
+      "subtitle": "ReLoq C voices as system voices.",
+      "localizedDescription": "The ReLoq C speech engine's voices (Reed, Shelley, Bobby, Rocko, Glen, Sandy, Grandma and Grandpa) as system voices on iPhone and iPad, in 14 languages. They work with VoiceOver, Spoken Content and any app that uses the system voices, all on the device and offline. The app sets each voice's pitch, speed and more, the sample rate, an equalizer and Mellow mode, and an optional pronunciation dictionary.\n\nThis build includes engine language data that is not owned by this project. ReLoq C's own notices say parts of its language rules and data are transcribed from IBM's Embedded ViaVoice and from the ETI Eloquence 6.1 language modules Apple ships with its operating systems. That data is not covered by ReLoq Apple's licence or ReLoq C's, and it will be removed if a rights holder asks. The source code, under the GPL, is at https://github.com/Quinton1110/ReLoq-Apple.",
+      "iconURL": "@RELEASE_URL@",
+      "category": "utilities",
+      "appPermissions": {
+        "entitlements": [
+          "com.apple.security.application-groups"
+        ],
+        "privacy": {}
+      },
+      "versions": []
+    }
+  ],
+  "news": []
+}

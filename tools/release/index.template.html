@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReLoq Apple downloads</title>
+<style>
+:root { color-scheme: light dark; --bg: #ffffff; --fg: #1a1a1a; --muted: #4a4a4a; --link: #0b57d0;
+        --btn: #0b57d0; --btn-fg: #ffffff; --box: #f2f4f7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #141414; --fg: #eeeeee; --muted: #c4c4c4; --link: #8ab4f8; --btn: #8ab4f8; --btn-fg: #111111;
+          --box: #222428; }
+}
+body { background: var(--bg); color: var(--fg); font: 1.05rem/1.6 -apple-system, system-ui, sans-serif;
+       max-width: 44rem; margin: 0 auto; padding: 1rem; }
+a { color: var(--link); }
+a.button { display: inline-block; background: var(--btn); color: var(--btn-fg); padding: 0.7rem 1.1rem;
+           border-radius: 0.5rem; text-decoration: none; font-weight: 600; margin: 0.3rem 0; }
+a.button:focus, a.button:hover { outline: 3px solid var(--fg); outline-offset: 2px; }
+.box { background: var(--box); padding: 0.8rem 1rem; border-radius: 0.5rem; }
+code { word-break: break-all; }
+dt { font-weight: 600; }
+dd { margin: 0 0 0.5rem 0; }
+</style>
+</head>
+<body>
+<main>
+<h1>ReLoq Apple</h1>
+<p>ReLoq Apple puts the voices of the ReLoq C speech engine on iPhone, iPad and Mac as real system voices: Reed, Shelley, Bobby, Rocko, Glen, Sandy, Grandma and Grandpa, in 14 languages. They work with VoiceOver, Spoken Content and any app that uses the system voices, all on the device and offline. ReLoq C is Karl Eick's engine that keeps the familiar character of Eloquence.</p>
+<p>The source code is on GitHub, under the GNU GPL: <a href="https://github.com/Quinton1110/ReLoq-Apple">github.com/Quinton1110/ReLoq-Apple</a>. It includes the exact ReLoq C source these builds use.</p>
+
+<section class="box" aria-labelledby="data">
+<h2 id="data">About the engine data in these downloads</h2>
+<p>These ready to install apps include engine language data that is not owned by this project. ReLoq C's own notices say parts of its language rules and data are transcribed from:</p>
+<ul>
+<li>IBM's Embedded ViaVoice, IBM's edition of the Eloquence engine. Eloquence was made by Eloquent Technology and later passed to SpeechWorks, ScanSoft, Nuance and Cerence.</li>
+<li>The ETI Eloquence 6.1 language modules that Apple ships with its operating systems.</li>
+</ul>
+<p>That data is not covered by ReLoq Apple's licence or ReLoq C's, and it will be removed if a rights holder asks.</p>
+</section>
+
+<h2 id="ios">iPhone and iPad</h2>
+<p><a class="button" href="ReLoq-Apple-0.0.ipa">Download ReLoq Apple 0.0 for iPhone and iPad</a></p>
+<dl>
+<dt>File</dt><dd>ReLoq-Apple-0.0.ipa, 0 MB (0 bytes)</dd>
+<dt>Version</dt><dd>0.0, build 0. Needs iOS 18.0 or later.</dd>
+<dt>SHA-256</dt><dd><code>0000000000000000000000000000000000000000000000000000000000000000</code></dd>
+</dl>
+
+<h3>Install with AltStore</h3>
+<p>Adding the ReLoq Apple source lets AltStore tell you about updates. SideStore reads the same source.</p>
+<p><a class="button" href="source.json">AltStore source</a></p>
+<p>Source address: <code>@RELEASE_URL@source.json</code></p>
+<ol>
+<li>Set up AltStore on your iPhone, following the steps at <a href="https://altstore.io/">altstore.io</a>.</li>
+<li>In AltStore, go to the Sources screen and tap the plus button.</li>
+<li>Paste the source address above and add it.</li>
+<li>Open the ReLoq Apple source, tap Free or Get next to ReLoq Apple, and sign in with your Apple ID if asked.</li>
+<li>When it finishes, open ReLoq Apple once.</li>
+</ol>
+<p>You can also download the IPA above, then in AltStore go to My Apps, tap the plus button and pick the file.</p>
+
+<h3>Install with Sideloadly</h3>
+<ol>
+<li>Install Sideloadly on your Mac or PC from <a href="https://sideloadly.io/">sideloadly.io</a>.</li>
+<li>Download the IPA above, connect your iPhone with a cable, and open Sideloadly.</li>
+<li>Drag the IPA in, enter your Apple ID, and click Start.</li>
+<li>On your iPhone, go to Settings, General, VPN and Device Management, and trust your developer profile.</li>
+<li>Open ReLoq Apple once.</li>
+</ol>
+<p>With a free Apple ID, the app stops working after 7 days until it is refreshed or reinstalled. AltStore refreshes it for you over Wi-Fi while AltServer is running.</p>
+
+<h2 id="mac">Mac</h2>
+<p><strong>Needs a Mac with Apple Silicon</strong> (M1 or later) and macOS 15.0 or later. It does not run on Intel Macs.</p>
+<p><a class="button" href="ReLoq-Apple-0.0-mac.zip">Download ReLoq Apple 0.0 for Mac</a></p>
+<dl>
+<dt>File</dt><dd>ReLoq-Apple-0.0-mac.zip, 0 MB (0 bytes)</dd>
+<dt>Version</dt><dd>0.0, build 0. Signed and notarized by Apple.</dd>
+<dt>SHA-256</dt><dd><code>0000000000000000000000000000000000000000000000000000000000000000</code></dd>
+</dl>
+<ol>
+<li>Open the zip file to unpack ReLoq Apple.</li>
+<li>Move ReLoq Apple into your Applications folder. If an older test copy called EloquenceVoices is there, delete it first, so macOS finds only one copy of the voices.</li>
+<li>Open ReLoq Apple once, so macOS picks up the voices.</li>
+<li>Leave it in Applications. macOS finds the voices through the app, so moving or deleting it removes them.</li>
+</ol>
+
+<h2 id="voices">Picking the voices</h2>
+<p>Each voice's name ends in "(ReLoq)", for example "Reed (ReLoq)", so you can tell it from Apple's own Eloquence voices.</p>
+<p>On iPhone and iPad, go to Settings, Accessibility, VoiceOver, Speech, Voice, or Settings, Accessibility, Spoken Content, Voices, and look under the voice's language. You can also add them to the VoiceOver rotor from the same Speech screen.</p>
+<p>On the Mac, they show up in VoiceOver Utility under Speech, and in System Settings, Accessibility, Spoken Content, System voice.</p>
+<p>The app's settings, such as pitch, speed, the equalizer and the pronunciation dictionary, reach the voice the next time it speaks. A new sample rate reaches VoiceOver after VoiceOver restarts.</p>
+<p>The community pronunciation dictionary is downloaded straight from its GitHub project (<a href="https://github.com/eigencrow/IBMTTSDictionaries">IBMTTSDictionaries</a>), not bundled with the app. The app fetches it only when you switch it on.</p>
+</main>
+</body>
+</html>

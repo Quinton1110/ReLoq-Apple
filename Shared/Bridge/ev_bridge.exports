@@ -1,0 +1,3 @@
+# The one interface the EloquenceEngine framework exports (Shared/Bridge/ev_bridge.h): every ev_ name.
+# Everything else in it - the whole engine - stays inside, so the linker can strip what the bridge never calls.
+_ev_*

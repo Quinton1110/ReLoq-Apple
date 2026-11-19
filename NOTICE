@@ -1,0 +1,132 @@
+What the licences cover
+=======================
+
+This repository
+---------------
+
+ReLoq Apple (the iPhone and Mac apps, the speech extension, the C bridge, the
+tests and the tools) is copyright (C) 2026 Quinton Williams and is free
+software: you can redistribute it and/or modify it under the terms of the GNU
+General Public License as published by the Free Software Foundation, either
+version 3 of the License, or (at your option) any later version. The full text
+is in LICENSE.
+
+    SPDX-License-Identifier: GPL-3.0-or-later
+
+The apps link ReLoq C, which is also GPL-3.0-or-later, so every build is a
+combined work under the GPL. Whoever distributes a build must also offer its
+complete corresponding source: this repository at that commit, ReLoq C at the
+commit the Engine/Reloq-C submodule points to (the app shows it under "This
+build"), and the build scripts in both.
+
+One file began in another project: Shared/Bridge/ev_marks.inc is the text
+pre-pass from openEVV (src/eci/api/evv_marks.c), which Quinton Williams wrote
+for openEVV under its MIT licence (quoted below). MIT is compatible with the
+GPL.
+
+The engine: ReLoq C
+-------------------
+
+The apps link ReLoq C, https://github.com/hozosch/Reloq-C, release 1.4.1
+(commit 5d56224) with three fixes for Apple platforms on top (Engine/README.md
+lists them), built by Engine/apple.mk as a static library into one framework the
+app and its speech extension share. ReLoq C is a git submodule here, not copied
+in. Its
+notice, in its own words:
+
+    ReLoq C
+    Copyright (C) 2026 Karl Eick and ReLoq C contributors
+
+    The original ReLoq C code in this repository is free software: you can
+    redistribute it and/or modify it under the terms of the GNU General Public
+    License as published by the Free Software Foundation, either version 3 of
+    the License, or (at your option) any later version.
+
+    [...]
+
+    This notice covers ReLoq C; it grants no rights to proprietary Eloquence,
+    IBM, Apple or other third-party software, data or trademarks.
+
+The full texts ship inside the app (App/Licenses), the same set ReLoq C's own
+Android package carries for the parts linked here:
+
+- ReLoq-C-NOTICE.txt: ReLoq C's NOTICE, with the CMUdict, ipa-dict and PCRE2
+  notices it carries;
+- ReLoq-C-LICENSE-GPL-3.0.txt: the GNU GPL version 3;
+- ReLoq-C-vendor-openevv61-LICENSE.txt and -NOTICE.txt: the openEVV copy
+  ReLoq C vendors (vendor/openevv61, MIT);
+- ReLoq-C-openevv-wordseg-LICENSE.txt and -NOTICE.txt: its English word
+  segmentation data (adapted from openEVV, MIT; Moby word lists, CMUdict, US
+  Census surnames);
+- ReLoq-C-Unicode-LICENSE.txt: the Unicode License V3, for its Unicode data;
+- ReLoq-C-SCOWL-Copyright.txt: the SCOWL copyright and permission notice.
+
+Language data inside the engine
+-------------------------------
+
+Not everything ReLoq C speaks with is its authors' own work, and ReLoq C says
+so itself. By its NOTICE and the NOTICE of the openEVV copy it vendors, parts
+of its language rules and data are transcribed from IBM's Embedded ViaVoice
+objects and from the ETI Eloquence 6.1 language modules Apple ships with its
+operating systems. No licence in this repository or in ReLoq C covers that
+data, and nobody here can license it to anyone. In openEVV's words:
+
+    That data is IBM's work, not ours. The MIT licence does not cover it and
+    we are in no position to license it to anyone.
+
+    [...]
+
+    If you mean to do more with this than read it and run it, the rights in
+    that data are yours to sort out with whoever holds them, and who that is
+    today is not simple. IBM published these objects. The engine underneath
+    them was Eloquence, by Eloquent Technology, which passed to SpeechWorks,
+    then ScanSoft, then Nuance, whose text-to-speech rights went to Cerence
+    in the 2019 spinoff and are now the subject of Cerence Inc. v. Microsoft
+    Corporation and Nuance Communications, Inc., D. Del. 1:25-cv-00553,
+    filed 6 May 2025. None of this is legal advice.
+
+That data is compiled into every build of the apps. It is not in this
+repository.
+
+openEVV
+-------
+
+https://github.com/Mudb0y/openevv. Its own code is MIT:
+
+    Copyright (c) 2026 Stanislaw Przedzinkowski
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the
+    "Software"), to deal in the Software without restriction, including
+    without limitation the rights to use, copy, modify, merge, publish,
+    distribute, sublicense, and/or sell copies of the Software, and to
+    permit persons to whom the Software is furnished to do so, subject to
+    the following conditions:
+
+    The above copyright notice and this permission notice shall be included
+    in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+    OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+    IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+    CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+    TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+The pronunciation dictionary
+----------------------------
+
+The optional community dictionary is IBMTTSDictionaries by eigencrow,
+https://github.com/eigencrow/IBMTTSDictionaries, released under CC0 1.0, a
+public-domain dedication. The app downloads it from GitHub when the user
+switches it on; it is not in this repository or in the apps.
+
+Names
+-----
+
+IBM, ViaVoice and Embedded ViaVoice are trademarks of International Business
+Machines Corporation. Eloquence is a trademark of its respective owner. The
+voice names (Reed, Shelley, Bobby, Rocko, Glen, Sandy, Grandma, Grandpa) are
+the names these presets are known by. This project is not affiliated with,
+endorsed by or supported by IBM, Cerence, Nuance, Microsoft or Apple.

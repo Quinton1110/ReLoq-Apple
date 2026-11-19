@@ -1,0 +1,208 @@
+name: EloquenceVoices
+options:
+  bundleIdPrefix: com.quinton
+  deploymentTarget:
+    iOS: "18.0"
+    macOS: "15.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: ZGJQ5DZFK2
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "2"
+    SWIFT_VERSION: "5.0"
+    GCC_C_LANGUAGE_STANDARD: gnu99
+    HEADER_SEARCH_PATHS:
+      - "$(SRCROOT)/Shared/Bridge"
+    SWIFT_OBJC_BRIDGING_HEADER: Shared/Bridge/EloquenceVoices-Bridging-Header.h
+    # ---- THE ENGINE SEAM (see Shared/Bridge/ev_bridge.c and Engine/README.md) ----
+    # The engine and the C bridge in front of it are ONE dynamic framework, EloquenceEngine.framework
+    # (targets EloquenceEngine / EloquenceEngine-macOS below), embedded once in the app and loaded by
+    # both the app and the speech extension, so the ~45 MB engine is on disk once, not once per binary.
+    # The framework links ReLoq C's STATIC archive: `make engine` builds it from the Engine/Reloq-C
+    # submodule (tools/apple/apple.mk) into Engine/reloq.xcframework + Engine/reloq-include.
+    # The slice is picked by SDK below.
+    EV_ENGINE: reloq
+    EV_ENGINE_DIR: Engine/reloq.xcframework
+    EV_ENGINE_FILE: libreloq.a
+    EV_ENGINE_HEADERS: Engine/reloq-include
+    "EV_ENGINE_SLICE[sdk=iphoneos*]": ios-arm64
+    "EV_ENGINE_SLICE[sdk=iphonesimulator*]": ios-arm64-simulator
+    "EV_ENGINE_SLICE[sdk=macosx*]": macos-arm64
+    EV_ENGINE_ARCHIVE: "$(SRCROOT)/$(EV_ENGINE_DIR)/$(EV_ENGINE_SLICE)/$(EV_ENGINE_FILE)"
+
+# The sources are identical on iOS and macOS (the author's Sapple layout): one app target and one
+# AVSpeechSynthesisProvider extension per platform, sharing every Swift and C file and the one engine
+# xcframework (ios-arm64, ios-arm64-simulator, macos-arm64). Only the Info.plist, the entitlements and
+# a few platform build settings differ (the concrete targets below).
+targetTemplates:
+  # The engine + ev_bridge.c, one dynamic framework per platform (see THE ENGINE SEAM above). Exports
+  # only the bridge's ev_ names (Shared/Bridge/ev_bridge.exports), so dead stripping keeps only the
+  # engine code the bridge reaches. ELOQUENCE_ENGINE=1 compiles the real-engine half of ev_bridge.c;
+  # ECI_STATIC makes eci.h declare plain functions; EV_ENGINE_reloq=1 is ReLoq C's half.
+  Engine:
+    type: framework
+    sources:
+      - path: Shared/Bridge
+        excludes: ["EloquenceVoices-Bridging-Header.h", "ev_bridge.exports", "ev_marks.inc"]     # the .inc is #included by ev_bridge.c
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.quinton.eloquencevoices.EloquenceEngine
+        PRODUCT_NAME: EloquenceEngine
+        GENERATE_INFOPLIST_FILE: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        DEFINES_MODULE: NO
+        DEAD_CODE_STRIPPING: YES
+        EXPORTED_SYMBOLS_FILE: Shared/Bridge/ev_bridge.exports
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/$(EV_ENGINE_HEADERS)", "$(inherited)"]
+        GCC_PREPROCESSOR_DEFINITIONS: ["$(inherited)", "ELOQUENCE_ENGINE=1", "ECI_STATIC=1", "EV_ENGINE_$(EV_ENGINE)=1"]
+        # the engine archive itself; iconv: ReLoq C converts text and dictionary encodings with it
+        OTHER_LDFLAGS: ["$(inherited)", "$(EV_ENGINE_ARCHIVE)", "-liconv"]
+
+  App:
+    type: application
+    sources:
+      # Info.plist is processed as INFOPLIST_FILE; without the exclude xcodegen also copies it in as a
+      # resource (ClassicVoices lesson: a second plist in the bundle breaks the embedded-binary check).
+      - path: App
+        excludes: ["Info.plist", "Info-macOS.plist"]
+      - path: Shared
+        excludes: ["Bridge/ev_bridge.c", "Bridge/ev_bridge.exports", "Bridge/ev_marks.inc"]     # compiled into EloquenceEngine.framework
+      # the licence notices ship in the app (App/Licenses holds ReLoq C's GPL and notices)
+      - path: NOTICE
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.quinton.eloquencevoices
+        PRODUCT_NAME: EloquenceVoices
+        GENERATE_INFOPLIST_FILE: NO
+
+  Extension:
+    type: app-extension
+    sources:
+      - path: Extension
+        excludes: ["Info.plist", "Info-macOS.plist"]
+      - path: Shared
+        excludes: ["Bridge/ev_bridge.c", "Bridge/ev_bridge.exports", "Bridge/ev_marks.inc"]     # compiled into EloquenceEngine.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.quinton.eloquencevoices.Extension
+        PRODUCT_NAME: EloquenceVoicesExtension
+        GENERATE_INFOPLIST_FILE: NO
+
+targets:
+  EloquenceEngine:
+    templates: [Engine]
+    platform: iOS
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+  EloquenceVoices:
+    templates: [App]
+    platform: iOS
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/App.entitlements
+        LD_RUNPATH_SEARCH_PATHS: ["$(inherited)", "@executable_path/Frameworks"]
+    dependencies:
+      - target: EloquenceVoicesExtension
+        embed: true
+      # the engine, embedded ONCE, in the app's Frameworks; the extension loads this same copy
+      - target: EloquenceEngine
+        embed: true
+
+  EloquenceVoicesExtension:
+    templates: [Extension]
+    platform: iOS
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_FILE: Extension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Extension/Ext.entitlements
+        # EloquenceVoices.app/PlugIns/EloquenceVoicesExtension.appex -> EloquenceVoices.app/Frameworks
+        LD_RUNPATH_SEARCH_PATHS: ["$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks"]
+    dependencies:
+      - target: EloquenceEngine
+        embed: false
+
+  # -- macOS (since 2026-10-15) --
+  # The author's Sapple recipe: the appex is embedded in Contents/PlugIns and signed with the app; macOS finds the
+  # voices through the app bundle, so the app has to stay where it is put (/Applications). Apple silicon
+  # only (ARCHS arm64; the engine's macOS slice is arm64 alone). Both sign MANUALLY with "Developer ID
+  # Application: Quinton Williams (ZGJQ5DZFK2)" for notarisation: no provisioning profile is needed for
+  # these entitlements (sandbox, the team-prefixed app group, outgoing network for the app's dictionary
+  # download); --timestamp is the secure timestamp the notary service requires;
+  # CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO keeps get-task-allow out (measured in Sapple: it is NOT
+  # dropped on its own, and the notary service rejects it). Check with `codesign -d --entitlements -`.
+  # For a locally debuggable build pass CODE_SIGN_STYLE=Automatic CODE_SIGN_INJECT_BASE_ENTITLEMENTS=YES.
+  EloquenceEngine-macOS:
+    templates: [Engine]
+    platform: macOS
+    settings:
+      base:
+        ARCHS: arm64
+        PRODUCT_NAME: EloquenceEngine
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Developer ID Application"
+        PROVISIONING_PROFILE_SPECIFIER: ""
+        OTHER_CODE_SIGN_FLAGS: "$(inherited) --timestamp"
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+
+  EloquenceVoices-macOS:
+    templates: [App]
+    platform: macOS
+    settings:
+      base:
+        ARCHS: arm64
+        LD_RUNPATH_SEARCH_PATHS: ["$(inherited)", "@executable_path/../Frameworks"]
+        INFOPLIST_FILE: App/Info-macOS.plist
+        CODE_SIGN_ENTITLEMENTS: App/App-macOS.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Developer ID Application"
+        PROVISIONING_PROFILE_SPECIFIER: ""
+        OTHER_CODE_SIGN_FLAGS: "$(inherited) --timestamp"
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+        COMBINE_HIDPI_IMAGES: YES
+    dependencies:
+      - target: EloquenceVoicesExtension-macOS
+        embed: true
+        codeSign: true
+      - target: EloquenceEngine-macOS
+        embed: true
+        codeSign: true
+
+  EloquenceVoicesExtension-macOS:
+    templates: [Extension]
+    platform: macOS
+    settings:
+      base:
+        ARCHS: arm64
+        INFOPLIST_FILE: Extension/Info-macOS.plist
+        CODE_SIGN_ENTITLEMENTS: Extension/Ext-macOS.entitlements
+        # EloquenceVoices.app/Contents/PlugIns/X.appex/Contents/MacOS/X -> EloquenceVoices.app/Contents/Frameworks
+        LD_RUNPATH_SEARCH_PATHS: ["$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks"]
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Developer ID Application"
+        PROVISIONING_PROFILE_SPECIFIER: ""
+        OTHER_CODE_SIGN_FLAGS: "$(inherited) --timestamp"
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+    dependencies:
+      - target: EloquenceEngine-macOS
+        embed: false
+
+schemes:
+  EloquenceVoices-macOS:
+    build:
+      targets:
+        EloquenceVoices-macOS: all
+    run:
+      config: Debug
