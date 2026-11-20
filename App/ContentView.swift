@@ -27,6 +27,8 @@ struct ContentView: View {
     @State private var dictEnabled = VoiceSettingsStore.shared.dictionaryEnabled
     @State private var dictAutoUpdate = VoiceSettingsStore.shared.dictionaryAutoUpdate
     @State private var dictFrequency = VoiceSettingsStore.shared.dictionaryUpdateFrequency
+    @State private var dictSource = VoiceSettingsStore.shared.dictionarySourceChoice
+    @State private var dictCustomLink = VoiceSettingsStore.shared.dictionaryCustomLink
     @State private var voiceTags = VoiceSettingsStore.shared.voiceTagsEnabled
     @State private var phrasePrediction = VoiceSettingsStore.shared.phrasePredictionEnabled
     @State private var sampleRate = VoiceSettingsStore.shared.sampleRate
@@ -109,6 +111,21 @@ struct ContentView: View {
                     Toggle("Use community dictionary", isOn: Binding(
                         get: { dictEnabled },
                         set: { on in dictEnabled = on; dictionary.setEnabled(on) }))
+                    Picker("Dictionary source", selection: Binding(
+                        get: { dictSource },
+                        set: { c in dictSource = c; dictionary.setSource(c) })) {
+                        ForEach(DictionarySourceChoice.allCases) { c in Text(c.title).tag(c) }
+                    }
+                    if dictSource == .custom {
+                        // Shown only for Custom, as "Check for updates" is only while it does something.
+                        TextField("GitHub link", text: $dictCustomLink)
+                            .noAutocapitalization()
+                            .autocorrectionDisabled()
+                            .onSubmit { dictionary.setCustomLink(dictCustomLink) }
+                        Button("Use this link") { dictionary.setCustomLink(dictCustomLink) }
+                            .disabled(dictionary.isBusy
+                                      || dictCustomLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
                     Toggle("Update automatically", isOn: Binding(
                         get: { dictAutoUpdate },
                         set: { on in dictAutoUpdate = on; dictionary.setAutoUpdate(on) }))

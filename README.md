@@ -65,7 +65,7 @@ Changes reach the voice the next time it speaks, except the sample rate (below).
 
 - Language and voice: which of the 112 voices the settings below apply to.
 - Voice settings: head size, pitch, pitch range, roughness, breathiness, speed and volume for each voice, with a button to go back to the voice's defaults. A preview with its own speaking rate lets you hear a change before VoiceOver uses it.
-- Pronunciation dictionary: an optional community dictionary (IBMTTSDictionaries), off until you switch it on, downloaded straight from its GitHub project rather than bundled with the app, with automatic updates daily, weekly or monthly, and "Update now". "Dictionary entries" lists every community entry and lets you add, change or remove your own words, with Listen on each.
+- Pronunciation dictionary: an optional community dictionary, off until you switch it on, downloaded straight from its GitHub project rather than bundled with the app. "Dictionary source" picks IBMTTSDictionaries by eigencrow (the default), AltIBMTTSDictionaries by Mohamed00, or Custom, a link to any GitHub repository of .dic files; its latest release is used, with automatic updates daily, weekly or monthly, and "Update now". "Dictionary entries" lists every community entry and lets you add, change or remove your own words, with Listen on each.
 - Sample rate: 8 kHz, 11 kHz (the classic sound and the default), 16, 22, 32, 44.1 or 48 kHz. ReLoq C makes the speech at each rate itself; nothing is resampled. VoiceOver takes a new rate only when VoiceOver restarts (see Observations). The preview uses it at once.
 - Equalizer: Off, Bright or Custom. Bright is the preset from ReLoq's Android app (treble up 4 dB, bass down 1 dB). Custom shows a Treble slider, from minus 12 to plus 12 dB.
 - Mellow mode: ReLoq's mellower sound, a little less energy around 3 to 5 kHz. It is offered at 16 kHz and above, because below that it does nothing.
@@ -143,6 +143,7 @@ Mac updates through Sparkle aren't set up yet; Mac users download the new zip fr
 - Engine: [ReLoq C](https://github.com/hozosch/Reloq-C) by Karl Eick and ReLoq C contributors, GPL-3.0-or-later.
 - [openEVV](https://github.com/Mudb0y/openevv) by Stanislaw Przedzinkowski and contributors, MIT: ReLoq C vendors a copy of it, the silence fix comes from it, and so does the US English text pre-pass this app runs before ReLoq C (Shared/Bridge/ev_marks.inc).
 - Community pronunciation dictionary: [IBMTTSDictionaries](https://github.com/eigencrow/IBMTTSDictionaries) by eigencrow and contributors, CC0 (public domain). The app downloads it only when you switch it on.
+- Alternative dictionary source: [AltIBMTTSDictionaries](https://github.com/Mohamed00/AltIBMTTSDictionaries) by Mohamed00. It has no licence, so it is not included with or distributed by this app; the app downloads it from GitHub only if you choose it.
 
 ## Licence
 

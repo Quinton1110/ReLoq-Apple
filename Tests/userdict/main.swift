@@ -6,6 +6,9 @@
 
 import Foundation
 
+/// The installed US English names, as Shared/PronunciationDictionary.swift (which needs the bridge) has them.
+enum PronunciationDictionaryNames { static let main = "ENUmain.dic", root = "ENURoot.dic", abbr = "ENUabbr.dic" }
+
 var failures = 0
 var passes = 0
 func check(_ ok: Bool, _ what: String) {
@@ -213,6 +216,75 @@ check(ListenMarker.take(mk, language: "enus", requestText: " Unread ", now: now)
 check(ListenMarker.take(mk, language: "enus", requestText: "unread", now: now) == nil, "marker: used once only")
 
 try? fm.removeItem(at: tmp)
+// MARK: - Dictionary sources (Shared/DictionarySource.swift): the links a user may paste, and finding the files
+
+let parsedLinks: [(String, String?)] = [
+    ("https://github.com/eigencrow/IBMTTSDictionaries", "eigencrow/IBMTTSDictionaries"),
+    ("https://github.com/Mohamed00/AltIBMTTSDictionaries.git", "Mohamed00/AltIBMTTSDictionaries"),
+    ("https://github.com/Mohamed00/AltIBMTTSDictionaries/", "Mohamed00/AltIBMTTSDictionaries"),
+    ("https://github.com/Mohamed00/AltIBMTTSDictionaries/tree/master/IBMTTS%206.7", "Mohamed00/AltIBMTTSDictionaries"),
+    ("https://github.com/eigencrow/IBMTTSDictionaries/releases/latest", "eigencrow/IBMTTSDictionaries"),
+    ("  http://www.github.com/someone/my.dicts.git?tab=readme#top \n", "someone/my.dicts"),
+    ("github.com/someone/dicts", "someone/dicts"),
+    ("GitHub.com/someone/dicts", "someone/dicts"),
+    ("git@github.com:someone/dicts.git", "someone/dicts"),
+    ("someone/dicts", "someone/dicts"),
+    ("some-one/dicts_2", "some-one/dicts_2"),
+    ("https://gitlab.com/someone/dicts", nil),
+    ("https://gist.github.com/someone/abc", nil),
+    ("ftp://github.com/someone/dicts", nil),
+    ("https://github.com/someone", nil),
+    ("someone", nil),
+    ("", nil),
+    ("some one/dicts", nil),
+    ("someone/..", nil),
+]
+check(parsedLinks.allSatisfy { DictionarySource.parse($0.0)?.id == $0.1 },
+      "dictionary source links: \(parsedLinks.count) forms read as expected " + parsedLinks.filter { DictionarySource.parse($0.0)?.id != $0.1 }
+        .map { "\"\($0.0)\" -> \(DictionarySource.parse($0.0)?.id ?? "nil"), want \($0.1 ?? "nil")" }.joined(separator: "; "))
+check(DictionarySourceChoice(stored: nil) == .eigencrow && DictionarySourceChoice(stored: "nonsense") == .eigencrow
+      && DictionarySourceChoice.allCases.first == .eigencrow,
+      "the default source (unset or unknown) is IBMTTSDictionaries by eigencrow, listed first")
+check(DictionarySourceChoice.eigencrow.source(custom: "x/y") == .eigencrow
+      && DictionarySourceChoice.alternative.source(custom: nil)?.id == "Mohamed00/AltIBMTTSDictionaries"
+      && DictionarySourceChoice.custom.source(custom: "https://github.com/a/b")?.id == "a/b"
+      && DictionarySourceChoice.custom.source(custom: "") == nil && DictionarySourceChoice.custom.source(custom: nil) == nil,
+      "each choice's repository; Custom only with a valid link")
+
+// The layouts below are the real release zips' listings (unzip -l, 2026-11-19), and the repositories' trees at
+// those tags, which hold the same .dic files.
+let eigencrowLayout = ["DEUabbr.dic", "DEUmain.dic", "DEURoot.dic", "ENUabbr.dic", "ENUmain.dic", "ENURoot.dic",
+                       ".gitignore", "LICENSE.md", "README.md"]
+let altLayout = [".github/ISSUE_TEMPLATE/config.yml", ".github/ISSUE_TEMPLATE/new-dictionary-entry.md",
+                 "IBMTTS 6.7/enumain.dic", "IBMTTS 6.7/enuroot.dic", "README.md", "changelog.txt",
+                 "doc/main dictionary spellings.md", "enumain.dic", "enuroot.dic", "espmain.dic"]
+let oddLayout = ["data/v2/English/EnuMain.DIC", "data/v2/English/ENUROOT.dic", "data/v1/enuMain.dic",
+                 "data/v1/enuRoot.dic", "data/v1/enuAbbr.dic", "de/deumain.dic", ".hidden/ENUabbr.dic",
+                 "notes/main.dic", "ENUmainx.dic", "ENU-main.dic", "readme.txt"]
+let e = DictionaryLayout.find(paths: eigencrowLayout)
+check(e["ENU"] == [.word: "ENUmain.dic", .root: "ENURoot.dic", .abbreviation: "ENUabbr.dic"]
+      && e["DEU"] == [.word: "DEUmain.dic", .root: "DEURoot.dic", .abbreviation: "DEUabbr.dic"] && e.count == 2,
+      "eigencrow's layout: US English and German, all three kinds, at the top")
+let a = DictionaryLayout.find(paths: altLayout)
+check(a["ENU"] == [.word: "enumain.dic", .root: "enuroot.dic"] && a["ESP"] == [.word: "espmain.dic"] && a.count == 2,
+      "AltIBMTTSDictionaries' layout: lower-case names; the general set at the top, not the IBMTTS 6.7 copy; no abbreviations; Spanish main")
+let o = DictionaryLayout.find(paths: oddLayout)
+check(o["ENU"] == [.word: "data/v1/enuMain.dic", .root: "data/v1/enuRoot.dic", .abbreviation: "data/v1/enuAbbr.dic"]
+      && o["DEU"] == [.word: "de/deumain.dic"] && o.count == 2,
+      "a nested, odd-case layout: the folder with all three kinds wins over one with two; hidden folders and non-dictionary names ignored")
+check(DictionaryLayout.find(paths: ["a/ENUmain.dic", "b/ENUmain.dic"])["ENU"] == [.word: "a/ENUmain.dic"]
+      && DictionaryLayout.find(paths: ["x/y/ENUmain.dic", "z/ENUmain.dic"])["ENU"] == [.word: "z/ENUmain.dic"]
+      && DictionaryLayout.find(paths: ["ENUmain.dic", "enumain.dic"])["ENU"] == [.word: "ENUmain.dic"],
+      "copies of one kind: the shallowest folder, then the first by name; never a mix of folders")
+check(DictionaryLayout.find(paths: ["README.md", "docs/x.txt"]).isEmpty, "a repository with no .dic files: nothing found")
+check(DictionaryLayout.classify("ENURoot.dic")?.kind == .root && DictionaryLayout.classify("enuroot.DIC")?.prefix == "ENU"
+      && DictionaryLayout.classify("main.dct") == nil && DictionaryLayout.classify("EN1main.dic") == nil,
+      "file names: prefix and kind in any case; other names refused")
+check(DictionaryKind.word.communityFile(prefix: "ENU") == PronunciationDictionaryNames.main
+      && DictionaryKind.root.communityFile(prefix: "ENU") == PronunciationDictionaryNames.root
+      && DictionaryKind.abbreviation.communityFile(prefix: "ENU") == PronunciationDictionaryNames.abbr,
+      "installed under the names a set from before sources has (ENUmain.dic, ENURoot.dic, ENUabbr.dic): no new download needed")
+
 print("\(passes) ok, \(failures) failed")
 exit(failures == 0 ? 0 : 1)
 

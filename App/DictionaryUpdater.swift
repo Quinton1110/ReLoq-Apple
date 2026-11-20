@@ -4,11 +4,14 @@
 //  Shared/PronunciationDictionary.swift) into the app-group container, and keeps it up to date when the
 //  user asks it to. App only: the extension just reads what is installed.
 //
-//  - The latest release comes from the GitHub releases API
-//    (api.github.com/repos/eigencrow/IBMTTSDictionaries/releases/latest -> tag_name, published_at);
-//    the three .dic files are downloaded AT THAT TAG from raw.githubusercontent.com.
+//  - From the source chosen under "Dictionary source" (Shared/DictionarySource.swift): its latest release
+//    (api.github.com/repos/<owner>/<repo>/releases/latest -> tag_name, published_at; with no release, the
+//    default branch's latest commit), the .dic files found at that tag in any folder and any case
+//    (DictionaryLayout), downloaded from raw.githubusercontent.com and installed under the app's own names.
+//    Switching the source downloads the new one's latest release; until that is in, no community set is in
+//    force (one source at a time). The user's own entries are untouched by all of this.
 //  - A download goes into a fresh folder of its own. It is validated (every file non-empty and parsed by
-//    the bridge into at least a sane number of entries) BEFORE the settings are pointed at it, so the
+//    the bridge into entries) BEFORE the settings are pointed at it, so the
 //    previous copy stays in use until the new one is complete; a failed or partial download is deleted
 //    and the old copy is untouched. Folders no longer in use are removed at the next launch, not at the
 //    moment of switching, so the extension is never reading a file that has just been deleted.
@@ -30,11 +33,6 @@ final class DictionaryUpdater: ObservableObject {
     @Published private(set) var counts: [Int] = []
 
     private let store = VoiceSettingsStore.shared
-    /// Smallest believable file, in entries (v26.09 has 1,233 / 68,414 / 84): a file that parses into
-    /// fewer is an error page or a truncated download, not a dictionary.
-    static let minimumEntries = [PronunciationDictionary.mainFile: 50,
-                                 PronunciationDictionary.rootFile: 1000,
-                                 PronunciationDictionary.abbrFile: 10]
 
     private init() { refreshInstalled() }
 
@@ -78,10 +76,11 @@ final class DictionaryUpdater: ObservableObject {
 
     // MARK: - Actions
 
-    /// The "Use community dictionary" switch. Turning it on with nothing installed downloads the latest.
+    /// The "Use community dictionary" switch. Turning it on with nothing installed from the chosen source
+    /// downloads that source's latest.
     func setEnabled(_ on: Bool) {
         store.dictionaryEnabled = on
-        if on && installedTag == nil {
+        if on && installedTag == nil && store.dictionarySource != nil {
             Task { await update(reason: .enable) }
         } else {
             status = ""      // the switch itself says on / off; a status line saying it again is noise
@@ -97,6 +96,30 @@ final class DictionaryUpdater: ObservableObject {
     func setFrequency(_ f: DictionaryUpdateFrequency) {
         store.dictionaryUpdateFrequency = f
         Task { await checkIfDue() }
+    }
+
+    /// The "Dictionary source" picker. A different source is downloaded at once when the dictionary is on (else
+    /// when it is switched on); Custom waits for a link.
+    func setSource(_ choice: DictionarySourceChoice) {
+        store.dictionarySourceChoice = choice
+        refreshInstalled()
+        status = ""
+        if store.dictionaryEnabled, store.dictionarySource != nil, installedTag == nil {
+            Task { await update(reason: .source) }
+        }
+    }
+
+    /// The Custom link, given with "Use this link" or Return. Says so when it is not a GitHub repository.
+    func setCustomLink(_ text: String) {
+        guard let source = DictionarySource.parse(text) else {
+            status = Self.describe(DictionarySourceError.notALink)
+            return
+        }
+        store.dictionaryCustomLink = source.id
+        store.dictionarySourceChoice = .custom
+        refreshInstalled()
+        status = ""
+        Task { await update(reason: .source) }      // a link given is a request to fetch it, on or off
     }
 
     /// "Update now".
@@ -126,29 +149,37 @@ final class DictionaryUpdater: ObservableObject {
         await update(reason: .automatic)
     }
 
-    enum Reason { case manual, enable, automatic }
-
-    private struct Release { let tag: String; let published: Date? }
+    enum Reason { case manual, enable, automatic, source }
 
     private func update(reason: Reason) async {
         guard !isBusy else { return }
+        guard let source = store.dictionarySource else {
+            if reason == .manual { status = "Enter a GitHub link." }
+            return
+        }
         isBusy = true
-        defer { isBusy = false }
+        defer {
+            isBusy = false
+            // The source was changed while this one was downloading: fetch the one now chosen.
+            if let now = store.dictionarySource, now != source, store.dictionaryEnabled {
+                Task { await update(reason: .source) }
+            }
+        }
         status = "Checking..."
         do {
-            let release = try await latestRelease()
+            let snap = try await fetcher.latest(source)
             store.dictionaryLastCheck = Date()
             // Layout 2 (2026-09-24) also carries the other languages' files: an install from before is
             // fetched again once, even at the same tag, so German arrives without waiting for a release.
-            if release.tag == store.dictionaryTag, PronunciationDictionary.installedFolder(store) != nil,
+            if snap.version == store.dictionaryTag, PronunciationDictionary.installedFolder(store) != nil,
                store.groupDefaults.integer(forKey: "dict.layout") >= 2 {
                 status = "Up to date."
                 return
             }
-            status = "Downloading \(Self.versionText(release.tag))..."
-            _ = try await install(release)
+            status = "Downloading \(Self.versionText(snap.version))..."
+            _ = try await install(snap)
             refreshInstalled()
-            status = "Updated to \(Self.versionText(release.tag))."
+            status = "Updated to \(Self.versionText(snap.version))."
                 + (store.dictionaryEnabled ? "" : " Dictionary is off.")
         } catch {
             let why = Self.describe(error)
@@ -162,22 +193,16 @@ final class DictionaryUpdater: ObservableObject {
 
     // MARK: - Network
 
-    enum UpdateError: Error {
-        case badResponse(Int)
-        case noTag
-        case emptyFile(String)
-        case doesNotParse(String, Int)
-        case noContainer
-    }
-
     static func describe(_ error: Error) -> String {
-        if let e = error as? UpdateError {
+        if let e = error as? DictionarySourceError {
             switch e {
             case .badResponse(let code): return "GitHub error \(code)."
-            case .noTag: return "no release found."
+            case .noRepository: return "that repository wasn't found."
+            case .noFiles: return "no dictionary files found in that release."
             case .emptyFile(let f): return "\(f) came back empty."
-            case .doesNotParse(let f, _): return "\(f) is not a valid dictionary."
+            case .doesNotParse(let f): return "\(f) is not a valid dictionary."
             case .noContainer: return "storage unavailable."
+            case .notALink: return "That isn't a GitHub repository link."
             }
         }
         if let u = error as? URLError {
@@ -199,87 +224,36 @@ final class DictionaryUpdater: ObservableObject {
         return URLSession(configuration: c)
     }()
 
-    private func latestRelease() async throws -> Release {
-        var req = URLRequest(url: URL(string: "https://api.github.com/repos/\(PronunciationDictionary.owner)/\(PronunciationDictionary.repo)/releases/latest")!)
-        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("EloquenceVoices-iOS", forHTTPHeaderField: "User-Agent")
-        let (data, resp) = try await session.data(for: req)
-        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        guard code == 200 else { throw UpdateError.badResponse(code) }
-        guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let tag = obj["tag_name"] as? String, !tag.isEmpty else { throw UpdateError.noTag }
-        let published = (obj["published_at"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
-        return Release(tag: tag, published: published)
-    }
+    private var fetcher: DictionaryFetcher { DictionaryFetcher(session: session, userAgent: "ReLoq-Apple") }
 
-    /// Downloads the three files at `release.tag` into a new folder, validates them, then points the
-    /// settings at it. Returns the entry counts [main, root, abbr].
-    private func install(_ release: Release) async throws -> [Int] {
-        guard let base = PronunciationDictionary.baseURL else { throw UpdateError.noContainer }
+    /// Downloads the snapshot's files into a new folder, validates them (each parses into entries), then points
+    /// the settings at it. Returns the US English entry counts [main, root, abbr] (0 = that kind not published).
+    private func install(_ snap: DictionarySnapshot) async throws -> [Int] {
+        guard let base = PronunciationDictionary.baseURL else { throw DictionarySourceError.noContainer }
         let fm = FileManager.default
         try fm.createDirectory(at: base, withIntermediateDirectories: true)
-        let safeTag = String(release.tag.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }.prefix(24))
+        let safeTag = String(snap.version.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }.prefix(24))
         let folder = "\(safeTag.isEmpty ? "release" : safeTag)-\(Int(Date().timeIntervalSince1970))"
         let incoming = base.appendingPathComponent(".incoming-" + folder, isDirectory: true)
         try? fm.removeItem(at: incoming)
         try fm.createDirectory(at: incoming, withIntermediateDirectories: true)
         do {
-            var counts: [Int] = []
-            for name in PronunciationDictionary.files {
-                let tag = release.tag.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? release.tag
-                let url = URL(string: "https://raw.githubusercontent.com/\(PronunciationDictionary.owner)/\(PronunciationDictionary.repo)/\(tag)/\(name)")!
-                var req = URLRequest(url: url)
-                req.setValue("EloquenceVoices-iOS", forHTTPHeaderField: "User-Agent")
-                let (tmp, resp) = try await session.download(for: req)
-                let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-                guard code == 200 else { throw UpdateError.badResponse(code) }
-                let dest = incoming.appendingPathComponent(name)
-                try fm.moveItem(at: tmp, to: dest)
-                let size = (try? fm.attributesOfItem(atPath: dest.path)[.size] as? Int) ?? 0
-                guard size > 0 else { throw UpdateError.emptyFile(name) }
-                let n = Int(ev_dict_count_entries(dest.path))
-                guard n >= Self.minimumEntries[name, default: 1] else { throw UpdateError.doesNotParse(name, max(0, n)) }
-                counts.append(n)
-            }
-            // The other languages the project publishes (v26.09: German). Optional: a language whose
-            // files are missing or do not read as a dictionary is left out, and US English still installs.
-            var extra: [String: [Int]] = [:]
-            for lang in PronunciationDictionary.communityLanguages where lang != ELOQUENCE_US_ENGLISH {
-                var got: [Int] = []
-                var names: [URL] = []
-                for name in PronunciationDictionary.files(for: lang) {
-                    let tag = release.tag.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? release.tag
-                    let url = URL(string: "https://raw.githubusercontent.com/\(PronunciationDictionary.owner)/\(PronunciationDictionary.repo)/\(tag)/\(name)")!
-                    var req = URLRequest(url: url)
-                    req.setValue("EloquenceVoices-iOS", forHTTPHeaderField: "User-Agent")
-                    guard let (tmp, resp) = try? await session.download(for: req),
-                          (resp as? HTTPURLResponse)?.statusCode == 200 else { break }
-                    let dest = incoming.appendingPathComponent(name)
-                    try? fm.removeItem(at: dest)
-                    guard (try? fm.moveItem(at: tmp, to: dest)) != nil else { break }
-                    let n = Int(ev_dict_count_entries(dest.path))
-                    guard n >= 1 else { break }
-                    got.append(n)
-                    names.append(dest)
-                }
-                if got.count == 3 {
-                    extra[lang.code] = got
-                } else {
-                    for u in names { try? fm.removeItem(at: u) }
-                }
-            }
+            let langs = [ELOQUENCE_US_ENGLISH] + PronunciationDictionary.communityLanguages.filter { $0 != ELOQUENCE_US_ENGLISH }
+            let prefixes = langs.compactMap { $0.communityPrefix?.uppercased() }
+            let got = try await fetcher.download(snap, prefixes: prefixes, into: incoming,
+                                                 count: { Int(ev_dict_count_entries($0.path)) })
             let final = base.appendingPathComponent(folder, isDirectory: true)
             try fm.moveItem(at: incoming, to: final)
             // Only now does anything point at the new copy.
             store.dictionaryFolder = folder
-            store.dictionaryTag = release.tag
-            store.dictionaryPublished = release.published
-            store.dictionaryCounts = counts
+            store.installedDictionarySource = snap.source.id
+            store.dictionaryTag = snap.version
+            store.dictionaryPublished = snap.published
             store.groupDefaults.set(2, forKey: "dict.layout")
-            for lang in PronunciationDictionary.communityLanguages where lang != ELOQUENCE_US_ENGLISH {
-                store.setDictionaryCounts(extra[lang.code] ?? [], for: lang)
+            for lang in langs {
+                store.setDictionaryCounts(lang.communityPrefix.flatMap { got[$0.uppercased()] } ?? [], for: lang)
             }
-            return counts
+            return store.dictionaryCounts
         } catch {
             try? fm.removeItem(at: incoming)
             throw error

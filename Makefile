@@ -10,7 +10,7 @@ RELOQ   ?= Engine/Reloq-C
 RELOQ_LIB ?= Engine/reloq.xcframework/macos-arm64/libreloq.a
 JOBS    ?= 8
 
-.PHONY: test bridge-test ssml-test userdict-test appgroup-test engine engine-check engine-test release clean
+.PHONY: test bridge-test ssml-test userdict-test appgroup-test engine engine-check engine-test dict-live-test release clean
 
 test: bridge-test ssml-test userdict-test appgroup-test
 
@@ -47,9 +47,9 @@ ssml-test: build/mac/ssml_test
 userdict-test: build/mac/userdict_test
 	@./build/mac/userdict_test
 
-build/mac/userdict_test: Shared/UserDictionary.swift Shared/DictionarySchedule.swift Shared/PhoneticRespelling.swift Shared/ListenMarker.swift Tests/userdict/main.swift
+build/mac/userdict_test: Shared/UserDictionary.swift Shared/DictionarySchedule.swift Shared/PhoneticRespelling.swift Shared/ListenMarker.swift Shared/DictionarySource.swift Tests/userdict/main.swift
 	@mkdir -p build/mac
-	swiftc -O Shared/UserDictionary.swift Shared/DictionarySchedule.swift Shared/PhoneticRespelling.swift Shared/ListenMarker.swift Tests/userdict/main.swift -o $@
+	swiftc -O Shared/UserDictionary.swift Shared/DictionarySchedule.swift Shared/PhoneticRespelling.swift Shared/ListenMarker.swift Shared/DictionarySource.swift Tests/userdict/main.swift -o $@
 
 # The app group resolver (Shared/AppGroup.swift, exactly as the targets compile it): a copy installed directly keeps
 # the entitlements' group; a copy AltStore or SideStore re-signed uses the group they list under ALTAppGroups in its
@@ -85,6 +85,19 @@ build/mac/ev_engine_test: Engine/test/ev_engine_test.c Shared/Bridge/ev_bridge.c
 	@mkdir -p build/mac
 	$(CC) -std=gnu99 -O2 -w -DELOQUENCE_ENGINE=1 -DEV_ENGINE_reloq=1 -DECI_STATIC -IShared/Bridge -IEngine/reloq-include \
 	  Engine/test/ev_engine_test.c $(RELOQ_LIB) -Wl,-dead_strip -lpthread -lm -liconv -o $@
+
+# LIVE (network, not part of `make test`): the offered dictionary sources' latest releases downloaded through the
+# app's own functions (Shared/DictionarySource.swift), counted and loaded by the bridge with ReLoq C linked in (after
+# `make engine`). `make dict-live-test LINKS="https://github.com/owner/repo"` checks other links the same way.
+dict-live-test: build/mac/dictsource_live
+	@./build/mac/dictsource_live $(LINKS)
+
+build/mac/dictsource_live: Shared/DictionarySource.swift Shared/UserDictionary.swift Tests/dictsource/main.swift Shared/Bridge/ev_bridge.c Shared/Bridge/ev_bridge.h Shared/Bridge/ev_marks.inc $(RELOQ_LIB)
+	@mkdir -p build/mac
+	$(CC) -std=gnu99 -O2 -w -DELOQUENCE_ENGINE=1 -DEV_ENGINE_reloq=1 -DECI_STATIC -IShared/Bridge -IEngine/reloq-include \
+	  -c Shared/Bridge/ev_bridge.c -o build/mac/ev_bridge_engine.o
+	swiftc -O -import-objc-header Shared/Bridge/ev_bridge.h Shared/UserDictionary.swift Shared/DictionarySource.swift \
+	  Tests/dictsource/main.swift build/mac/ev_bridge_engine.o $(RELOQ_LIB) -Xlinker -dead_strip -liconv -o $@
 
 # A release: the IPA, the notarized Mac zip, the AltStore / SideStore source and the downloads page (tools/release.sh;
 # server and notarization settings in tools/release.local). DRYRUN=1 builds and shows everything but uploads nothing;

@@ -1,31 +1,32 @@
 //
 //  PronunciationDictionary.swift
-//  The community pronunciation dictionary, OPT-IN (off by default): IBMTTSDictionaries by eigencrow
-//  and contributors, github.com/eigencrow/IBMTTSDictionaries, licence CC0-1.0 (public domain). Three
-//  files per release - ENUmain.dic (whole words), ENURoot.dic (word roots, which also cover their
+//  The community pronunciation dictionary, OPT-IN (off by default), from ONE source at a time
+//  (Shared/DictionarySource.swift, "Dictionary source"): by default IBMTTSDictionaries by eigencrow and
+//  contributors, github.com/eigencrow/IBMTTSDictionaries, licence CC0-1.0 (public domain). Up to three
+//  files per language - ENUmain.dic (whole words), ENURoot.dic (word roots, which also cover their
 //  inflections: "iphone" fixes "iPhones"), ENUabbr.dic (abbreviations) - Windows-1252 text, one
 //  "key TAB replacement" per line. Nothing is bundled: the app downloads a release into the app-group
-//  container (Library/Dictionaries/<folder>/) and both processes read it from there.
+//  container (Library/Dictionaries/<folder>/, always under those names) and both processes read it from there.
 //
 //  Shared by both targets: the settings (in the app-group defaults, like the voice settings) and
 //  `configureEngine()`, which each process calls before speaking so the bridge loads the files when
 //  the switch is on and drops them when it is off (ev_bridge.h "THE COMMUNITY PRONUNCIATION
 //  DICTIONARY" says how, and why the root file is handed over word by word).
 //
-//  NOT used, deliberately: github.com/Mohamed00/AltIBMTTSDictionaries, an alternative set that carries
-//  no licence at all.
+//  Also offered, as an opt-in source the user picks and downloads from GitHub on their own device:
+//  github.com/Mohamed00/AltIBMTTSDictionaries. It carries no licence at all, so it is NEVER bundled with the
+//  app or hosted anywhere by us; nothing is fetched from it unless the user chooses it. Or any GitHub
+//  repository the user links to ("Custom").
 //
 
 import Foundation
 
 enum PronunciationDictionary {
-    static let owner = "eigencrow"
-    static let repo = "IBMTTSDictionaries"
     static let mainFile = "ENUmain.dic"
     static let rootFile = "ENURoot.dic"
     static let abbrFile = "ENUabbr.dic"
-    /// The US English files: a release is installed when these are there (the other languages' files are
-    /// optional - v26.09 has German too, nothing else).
+    /// The US English files, as installed: a set is installed when at least one of these is there (a source need
+    /// not publish all three - AltIBMTTSDictionaries has no abbreviations; the other languages are optional).
     static let files = [mainFile, rootFile, abbrFile]
 
     /// Every language the project publishes files for, and the three names of each.
@@ -40,22 +41,29 @@ enum PronunciationDictionary {
         AppGroup.containerURL.map(DictionaryLocations.community(in:))
     }
 
-    /// The installed release's folder, if there is one and its US English files are there.
+    /// The installed release's folder, if there is one, it came from the source now chosen, and it has at least
+    /// one US English file. A set from another source is not used: one source at a time, and a switch that has
+    /// not finished downloading leaves no community dictionary in force rather than the old one.
     static func installedFolder(_ store: VoiceSettingsStore = .shared) -> URL? {
-        guard let name = store.dictionaryFolder, !name.isEmpty, let base = baseURL else { return nil }
+        guard let name = store.dictionaryFolder, !name.isEmpty, let base = baseURL,
+              let chosen = store.dictionarySource, store.installedDictionarySource == chosen.id else { return nil }
         let dir = base.appendingPathComponent(name, isDirectory: true)
-        for f in files where !FileManager.default.fileExists(atPath: dir.appendingPathComponent(f).path) { return nil }
+        guard files.contains(where: { FileManager.default.fileExists(atPath: dir.appendingPathComponent($0).path) })
+        else { return nil }
         return dir
     }
 
-    /// The installed release's three files for one language, or nil when it has none.
-    static func installedFiles(for lang: EloquenceLanguage, _ store: VoiceSettingsStore = .shared) -> [URL]? {
+    /// The installed release's files for one language, [main, root, abbr] with nil for a kind it does not have;
+    /// nil when it has none of them.
+    static func installedFiles(for lang: EloquenceLanguage, _ store: VoiceSettingsStore = .shared) -> [URL?]? {
         guard let dir = installedFolder(store) else { return nil }
         let names = files(for: lang)
         guard names.count == 3 else { return nil }
-        let urls = names.map { dir.appendingPathComponent($0) }
-        for u in urls where !FileManager.default.fileExists(atPath: u.path) { return nil }
-        return urls
+        let urls: [URL?] = names.map { n in
+            let u = dir.appendingPathComponent(n)
+            return FileManager.default.fileExists(atPath: u.path) ? u : nil
+        }
+        return urls.contains(where: { $0 != nil }) ? urls : nil
     }
 
     /// The user's own entries of one language (UserDictionary.swift; US English in
@@ -77,7 +85,7 @@ enum PronunciationDictionary {
     static func communityEntries(for lang: EloquenceLanguage = ELOQUENCE_US_ENGLISH,
                                  _ store: VoiceSettingsStore = .shared) -> [DictionaryEntry] {
         guard let urls = installedFiles(for: lang, store) else { return [] }
-        return zip(DictionaryKind.allCases, urls).flatMap { DictionaryFile.load($1, kind: $0) }
+        return zip(DictionaryKind.allCases, urls).flatMap { kind, url in url.map { DictionaryFile.load($0, kind: kind) } ?? [] }
     }
 
     /// For a preview in the app process only: one language's community files on or off regardless of the
@@ -93,7 +101,7 @@ enum PronunciationDictionary {
         if userPaths.count == 3 { ev_dict_configure_user_lang(lang.eci, userPaths[0], userPaths[1], userPaths[2]) }
         else { ev_dict_configure_user_lang(lang.eci, nil, nil, nil) }
         if community, let u = installedFiles(for: lang, store) {
-            ev_dict_configure_lang(lang.eci, u[0].path, u[1].path, u[2].path)
+            ev_dict_configure_lang(lang.eci, u[0]?.path, u[1]?.path, u[2]?.path)
         } else {
             ev_dict_configure_lang(lang.eci, nil, nil, nil)
         }
@@ -122,7 +130,7 @@ enum PronunciationDictionary {
                 ev_dict_configure_user_lang(lang.eci, nil, nil, nil)
             }
             if store.dictionaryEnabled, let u = installedFiles(for: lang, store) {
-                ev_dict_configure_lang(lang.eci, u[0].path, u[1].path, u[2].path)
+                ev_dict_configure_lang(lang.eci, u[0]?.path, u[1]?.path, u[2]?.path)
                 if lang == (language ?? ELOQUENCE_US_ENGLISH) { configured = true }
             } else {
                 ev_dict_configure_lang(lang.eci, nil, nil, nil)
@@ -164,6 +172,9 @@ extension VoiceSettingsStore {
         static let lastCheck = "dict.lastCheck"
         static let counts = "dict.counts"
         static let frequency = "dict.frequency"
+        static let source = "dict.source"
+        static let customSource = "dict.customSource"
+        static let installedSource = "dict.installedSource"
         static let voiceTags = "engine.voiceTags"
         static let phrasePrediction = "engine.phrasePrediction"
     }
@@ -194,6 +205,33 @@ extension VoiceSettingsStore {
     var phrasePredictionEnabled: Bool {
         get { groupDefaults.object(forKey: DictKey.phrasePrediction) as? Bool ?? true }
         set { groupDefaults.set(newValue, forKey: DictKey.phrasePrediction) }
+    }
+
+    /// "Dictionary source": which repository (DictionarySourceChoice; unset = IBMTTSDictionaries by eigencrow).
+    var dictionarySourceChoice: DictionarySourceChoice {
+        get { DictionarySourceChoice(stored: groupDefaults.string(forKey: DictKey.source)) }
+        set {
+            if newValue == .eigencrow { groupDefaults.removeObject(forKey: DictKey.source) }
+            else { groupDefaults.set(newValue.rawValue, forKey: DictKey.source) }
+        }
+    }
+
+    /// The Custom source's link as the user gave it ("" when none).
+    var dictionaryCustomLink: String {
+        get { groupDefaults.string(forKey: DictKey.customSource) ?? "" }
+        set { groupDefaults.set(newValue, forKey: DictKey.customSource) }
+    }
+
+    /// The repository chosen now; nil for Custom without a valid link.
+    var dictionarySource: DictionarySource? {
+        dictionarySourceChoice.source(custom: dictionaryCustomLink)
+    }
+
+    /// "owner/repo" of the installed set. A set installed before sources existed has none recorded: it is
+    /// eigencrow's, which is all the app could download then.
+    var installedDictionarySource: String {
+        get { groupDefaults.string(forKey: DictKey.installedSource) ?? DictionarySource.eigencrow.id }
+        set { groupDefaults.set(newValue, forKey: DictKey.installedSource) }
     }
 
     /// "Use community dictionary" - OFF by default.
