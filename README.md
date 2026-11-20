@@ -121,7 +121,7 @@ xcodebuild -project EloquenceVoices.xcodeproj -scheme EloquenceVoices-macOS -con
 
 If you cloned without `--recurse-submodules`, run `git submodule update --init` first. After `make engine`, `make engine-test DICT_DIR=Engine/Reloq-C/data/community` runs the real engine through the bridge on the Mac, using the copy of the community dictionary that ReLoq C carries.
 
-To sign it yourself, change `DEVELOPMENT_TEAM` in project.yml to your team, and change the bundle identifiers (`com.quinton.eloquencevoices` and the two under it) and the app group (in the entitlements files and `Shared/AppGroup.swift`) to ones your team owns. The app and its speech extension share their settings through that app group. A copy installed through AltStore or SideStore is given a different group by them, which the app reads from their `ALTAppGroups` list in its Info.plist.
+To sign it yourself, change `DEVELOPMENT_TEAM` in project.yml to your team, and change the bundle identifiers (`com.quinton.eloquencevoices` and the two under it) and the app group (in the entitlements files and `Shared/AppGroup.swift`) to ones your team owns. The app and its speech extension share their settings through that app group. A copy installed through AltStore or SideStore is given a different group by them, which the app reads from their `ALTAppGroups` list in its Info.plist. A copy re-signed any other way (Sideloadly, Signulous, or your own build under your team) uses the group its embedded provisioning profile grants.
 
 The project, scheme and bundle identifiers still say EloquenceVoices, the app's name before it moved to ReLoq C. They are kept on purpose: an installed copy updates in place and keeps its voice choice and settings.
 
