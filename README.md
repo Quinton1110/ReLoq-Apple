@@ -69,6 +69,7 @@ Changes reach the voice the next time it speaks, except the sample rate (below).
 - Sample rate: 8 kHz, 11 kHz (the classic sound and the default), 16, 22, 32, 44.1 or 48 kHz. ReLoq C makes the speech at each rate itself; nothing is resampled. VoiceOver takes a new rate only when VoiceOver restarts (see Observations). The preview uses it at once.
 - Equalizer: Off, Bright or Custom. Bright is the preset from ReLoq's Android app (treble up 4 dB, bass down 1 dB). Custom shows a Treble slider, from minus 12 to plus 12 dB.
 - Mellow mode: ReLoq's mellower sound, a little less energy around 3 to 5 kHz. It is offered at 16 kHz and above, because below that it does nothing.
+- Shorten pauses: Never (the default), Only at end of text, or Always. It shortens the pauses ReLoq C adds by itself; a pause the text asks for keeps its length.
 - Phrase prediction: pauses in long sentences that have no punctuation. On by default.
 - Enable backquote voice tags: lets text change the voice with Eloquence-style backquote tags, as NVDA's option does. Off by default.
 

@@ -88,6 +88,7 @@ enum PronunciationDictionary {
         ev_set_voice_tags(store.voiceTagsEnabled ? 1 : 0)
         ev_set_phrase_prediction(store.phrasePredictionEnabled ? 1 : 0)
         store.applyTone()
+        store.applyPauses()
         ev_dict_set_listen(lang.eci, nil, 0)
         if userPaths.count == 3 { ev_dict_configure_user_lang(lang.eci, userPaths[0], userPaths[1], userPaths[2]) }
         else { ev_dict_configure_user_lang(lang.eci, nil, nil, nil) }
@@ -102,8 +103,8 @@ enum PronunciationDictionary {
     /// whenever there are any (whatever the switch says - they are the user's own list), and the
     /// language's community files when the switch is on and the installed release has them. Cheap to call
     /// before every request (the bridge acts only on a change, and re-reads a user file only when it
-    /// changed). Also hands the bridge the "Enable backquote voice tags" and "Phrase prediction" switches and the tone
-    /// controls (equalizer, treble, Mellow), and - given the request's
+    /// changed). Also hands the bridge the "Enable backquote voice tags" and "Phrase prediction" switches, the tone
+    /// controls (equalizer, treble, Mellow) and "Shorten pauses", and - given the request's
     /// text - applies a Listen marker the dictionary editor left (ListenMarker below). Returns whether a
     /// COMMUNITY dictionary is configured for the language (US English for nil).
     @discardableResult
@@ -112,6 +113,7 @@ enum PronunciationDictionary {
         ev_set_voice_tags(store.voiceTagsEnabled ? 1 : 0)
         ev_set_phrase_prediction(store.phrasePredictionEnabled ? 1 : 0)
         store.applyTone()
+        store.applyPauses()
         var configured = false
         for lang in language.map({ [$0] }) ?? ELOQUENCE_LANGUAGES {
             if let paths = userStore(for: lang)?.bridgePaths, paths.count == 3 {

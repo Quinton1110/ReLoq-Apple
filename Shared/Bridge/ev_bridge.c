@@ -66,6 +66,12 @@ int ev_tone_available(void)
     return 1;
 }
 
+/* ReLoq C has "Shorten pauses" (ev_set_pause_mode); the stub answers yes, as for the tone controls. */
+int ev_pause_mode_available(void)
+{
+    return 1;
+}
+
 /* Speed units per e-fold of speed, from the measurement in ev_bridge.h:
      units:    0     10    20    30    40    50    60    70    80   100   120   140   160   200   250
      factor: 0.37  0.45  0.55  0.67  0.82  1.00  1.23  1.50  1.83  2.74  4.01  5.90  9.03  16.8  21.6
@@ -797,6 +803,12 @@ void ev_tone(int *bass_db, int *mid_db, int *treble_db, int *mellow)
     if (mellow) *mellow = w >> 15 & 1;
 }
 
+/* "Shorten pauses" (ev_bridge.h): RELOQ_ECI_PAUSE_MODE, 0 (ReLoq's default) ... 2. One int, so a request on
+   another thread reads either the old value or the new one. */
+static volatile int ev_pause_mode_on = 0;
+void ev_set_pause_mode(int mode) { ev_pause_mode_on = mode < 0 ? 0 : mode > 2 ? 2 : mode; }
+int ev_pause_mode(void) { return ev_pause_mode_on; }
+
 int ev_text_fold(const char *utf8, char *out, int room) { return ev_text_fold_lang(utf8, EV_LANG_ENUS, out, room); }
 
 int ev_text_fold_lang(const char *utf8, int32_t lang, char *out, int room)
@@ -877,6 +889,7 @@ struct ev_voice {
     int32_t   lang;         /* the engine's language/dialect number (EV_LANG_*) */
     int       phrase_pred;  /* the phrase prediction (env 11) the instance has */
     int       tone;         /* ReLoq: the tone word (ev_tone_word) the instance has; EV_TONE_FLAT = ReLoq's defaults */
+    int       pause_mode;   /* ReLoq: RELOQ_ECI_PAUSE_MODE as the instance has it; 0 = ReLoq's default */
     int       engine_error; /* ReLoq: RELOQ_ECI_LAST_ERROR after a failed eciSynthesize (0 = none) */
     int       engine_stage; /* ReLoq: RELOQ_ECI_FAILURE_STAGE with it */
 };
@@ -897,6 +910,7 @@ static int ev_voice_new_instance(ev_voice *v, int pp)
     if (eciSetParam(v->h, EV_ECI_PHRASE_PREDICTION, pp) < 0) pp = eciGetParam(v->h, EV_ECI_PHRASE_PREDICTION);
     v->phrase_pred = pp;
     v->tone = EV_TONE_FLAT;   /* a new instance has ReLoq's defaults: flat, Mellow off */
+    v->pause_mode = 0;        /* and its original pauses */
     v->rate_hz = 0;
     v->input_type = 0;
     eciRegisterCallback(v->h, ev_on_message, v);
@@ -1172,6 +1186,15 @@ int ev_voice_speak(ev_voice *v, const char *text, const ev_request *req, ev_pcm_
             if ((want >> 10 & 31) != (v->tone >> 10 & 31) && eciSetParam(v->h, RELOQ_ECI_EQ_HIGH, want >> 10 & 31) < 0) return -1;
             if ((want >> 15 & 1) != (v->tone >> 15 & 1) && eciSetParam(v->h, RELOQ_ECI_MELLOW_MODE, want >> 15 & 1) < 0) return -1;
             v->tone = want;
+        }
+    }
+    /* "Shorten pauses", the same way: told to the instance only when it differs, so at the default (0, the
+       original pauses) nothing is set. The engine reads it at every synthesis: the next utterance hears it. */
+    {
+        int want = ev_pause_mode_on;
+        if (want != v->pause_mode) {
+            if (eciSetParam(v->h, RELOQ_ECI_PAUSE_MODE, want) < 0) return -1;
+            v->pause_mode = want;
         }
     }
 

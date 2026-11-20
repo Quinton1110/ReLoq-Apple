@@ -33,6 +33,7 @@ struct ContentView: View {
     @State private var tone = VoiceSettingsStore.shared.tone
     @State private var trebleDB = VoiceSettingsStore.shared.trebleDB
     @State private var mellow = VoiceSettingsStore.shared.mellow
+    @State private var shortenPauses = VoiceSettingsStore.shared.shortenPauses
     @StateObject private var dictionary = DictionaryUpdater.shared
     @Environment(\.scenePhase) private var scenePhase
 
@@ -139,7 +140,7 @@ struct ContentView: View {
                     Text("Pronunciation dictionary")
                 }
 
-                if OutputSampleRate.available || ToneSetting.available {
+                if OutputSampleRate.available || ToneSetting.available || PauseSetting.available {
                     Section {
                         if OutputSampleRate.available {
                             Picker("Sample rate", selection: Binding(
@@ -165,6 +166,13 @@ struct ContentView: View {
                                 Toggle("Mellow mode", isOn: Binding(
                                     get: { mellow },
                                     set: { on in mellow = on; store.mellow = on }))
+                            }
+                        }
+                        if PauseSetting.available {
+                            Picker("Shorten pauses", selection: Binding(
+                                get: { shortenPauses },
+                                set: { p in shortenPauses = p; store.shortenPauses = p })) {
+                                ForEach(PauseSetting.allCases) { p in Text(p.title).tag(p) }
                             }
                         }
                     }

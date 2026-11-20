@@ -349,6 +349,15 @@ int main(int argc, char **argv)
       ev_set_tone(0, 0, 0, 0); ev_tone(&b, &m, &t, &me);
       CHECK(b == 0 && m == 0 && t == 0 && me == 0 && ev_tone_available(), "tone back to the defaults, available on the stub"); }
 
+    /* "Shorten pauses": Never (0) by default, ReLoq's own; 0..2 round-trip; clamped */
+    { int i, ok = ev_pause_mode() == 0;
+      CHECK(ok, "shorten pauses defaults to Never (0): %d", ev_pause_mode());
+      for (i = 0, ok = 1; i <= 2; i++) { ev_set_pause_mode(i); ok = ok && ev_pause_mode() == i; }
+      CHECK(ok, "shorten pauses 0, 1, 2 round-trip");
+      ev_set_pause_mode(-5); ok = ev_pause_mode() == 0; ev_set_pause_mode(9); ok = ok && ev_pause_mode() == 2;
+      ev_set_pause_mode(0);
+      CHECK(ok && ev_pause_mode() == 0 && ev_pause_mode_available(), "shorten pauses clamps to 0..2, back to Never, available on the stub"); }
+
     /* Sample rates as the stub (and ReLoq C) take them: the seven ECI codes, every one native */
     CHECK(ev_sample_rate_supported(22050) && ev_sample_rate_supported(48000) && !ev_sample_rate_supported(12000)
           && ev_sample_rate_native(16000) && !ev_sample_rate_native(9000), "rates: the seven codes, all native");

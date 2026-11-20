@@ -143,6 +143,42 @@ enum ToneSetting: String, CaseIterable, Identifiable {
     }
 }
 
+/// "Shorten pauses": ReLoq C's pause policy (RELOQ_ECI_PAUSE_MODE), named and worded as its NVDA add-on has it
+/// ("Never", "Only at text end", "Always"). It changes only the pauses the engine adds itself; a pause the text asks
+/// for keeps its length. One setting for every voice, in the app group, handed to the bridge in configureEngine()
+/// before every request like the tone controls. Never (the engine's own pauses) is the default and is stored as NO
+/// value: with it the engine is never told anything (ev_set_pause_mode).
+enum PauseSetting: String, CaseIterable, Identifiable {
+    /// The original pauses (engine value 0).
+    case never
+    /// Only the final automatic pause of the text is shortened (1).
+    case end
+    /// Every automatic pause is shortened (2).
+    case always
+    var id: String { rawValue }
+
+    static let key = "engine.shortenPauses"
+
+    static var available: Bool { ev_pause_mode_available() != 0 }
+
+    var title: String {
+        switch self {
+        case .never: return "Never"
+        case .end: return "Only at end of text"
+        case .always: return "Always"
+        }
+    }
+
+    /// The engine's value.
+    var mode: Int32 {
+        switch self {
+        case .never: return 0
+        case .end: return 1
+        case .always: return 2
+        }
+    }
+}
+
 final class VoiceSettingsStore {
     static let shared = VoiceSettingsStore()
 
@@ -235,6 +271,20 @@ final class VoiceSettingsStore {
     func applyTone() {
         let (b, m, t) = tone.bands(treble: trebleDB)
         ev_set_tone(b, m, t, mellow ? 1 : 0)
+    }
+
+    /// "Shorten pauses" (PauseSetting): the stored one, else Never. Never is stored as no value.
+    var shortenPauses: PauseSetting {
+        get { defaults.string(forKey: PauseSetting.key).flatMap(PauseSetting.init(rawValue:)) ?? .never }
+        set {
+            if newValue == .never { defaults.removeObject(forKey: PauseSetting.key) }
+            else { defaults.set(newValue.rawValue, forKey: PauseSetting.key) }
+        }
+    }
+
+    /// Hands "Shorten pauses" to the bridge (configureEngine calls this before every request).
+    func applyPauses() {
+        ev_set_pause_mode(shortenPauses.mode)
     }
 
     /// The output sample rate in hertz: the stored one when the engine really makes it, else the native

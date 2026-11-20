@@ -273,6 +273,15 @@ void ev_set_tone(int bass_db, int mid_db, int treble_db, int mellow);
 void ev_tone(int *bass_db, int *mid_db, int *treble_db, int *mellow);
 int ev_tone_available(void);
 
+/* ReLoq C's "Shorten pauses" (RELOQ_ECI_PAUSE_MODE), process-wide: 0 = the original pauses (ReLoq's default),
+   1 = only the final automatic pause of the text is shortened, 2 = every automatic pause is. Pauses the text
+   asks for explicitly keep their length. Handled like the tone controls: the app hands it over in
+   configureEngine() before every request, and a handle is told only when the value differs from what it has
+   (at the default, never). Values outside 0..2 are clamped. */
+void ev_set_pause_mode(int mode);
+int ev_pause_mode(void);
+int ev_pause_mode_available(void);
+
 /* openevv's US English text pre-pass (Shared/Bridge/ev_marks.inc), which ReLoq C is handed text through:
    on by default; off only for comparisons on the Mac. (The openevv engine did it itself.) */
 void ev_set_text_prepass(int on);

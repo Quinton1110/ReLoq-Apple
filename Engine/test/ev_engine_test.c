@@ -10,7 +10,8 @@
  *      and compares the shift in semitones with the one asked for;
  *   2. dictionary (DICT_DIR): words through ev_voice_speak with the dictionary configured, then their
  *      phonemes from the same instance, against a handle with none; timings of the loads.
- *   ... 6. phrase prediction on / off (sample counts, byte comparisons, a pooled handle switched).
+ *   ... 6. phrase prediction on / off (sample counts, byte comparisons, a pooled handle switched);
+ *   ... 10. "Shorten pauses" Never / Only at end of text / Always (sample counts, a handle in use switched).
  * Exit status non-zero on a failed check.
  */
 #include "../../Shared/Bridge/ev_bridge.c"
@@ -596,6 +597,44 @@ int main(void)
         CHECK(same_pcm(m11, f11), "tone Mellow at 11025 Hz: no change (ReLoq: from 16 kHz up)");
         free(flat.pcm); free(bright.pcm); free(back.pcm); free(a.pcm); free(b.pcm); free(c.pcm);
         free(f22.pcm); free(m22.pcm); free(f11.pcm); free(m11.pcm);
+    }
+
+    /* 10. "Shorten pauses" (ReLoq C's RELOQ_ECI_PAUSE_MODE; ev_set_pause_mode). The default (0) is the engine's own
+       output byte for byte; Always (2) makes a comma-heavy sentence shorter; Only at end of text (1) lies between;
+       and on ONE handle kept open, as VoiceOver keeps its audio unit, a change is heard on the next utterance. */
+    if (ev_pause_mode_available() && ev_engine_present()) {
+        const char *commas = "Red, orange, yellow, green, blue, indigo, violet, black, white, and grey, all of them, please.";
+        ev_voice_params vp;
+        ev_voice *v;
+        buf_t first, never, end, always, a, b, c;
+        CHECK(ev_pause_mode() == 0, "shorten pauses is Never by default");
+        v = ev_voice_open(1); ev_voice_preset_params(v, &vp); ev_voice_close(v);
+        vp.speed = EV_STANDARD_SPEED;
+#define FRESH_PM(var) do { v = ev_voice_open(1); var = say(v, commas, vp, 0, &rc); ev_voice_close(v); } while (0)
+        FRESH_PM(first);
+        ev_set_pause_mode(0); FRESH_PM(never);
+        ev_set_pause_mode(1); FRESH_PM(end);
+        ev_set_pause_mode(2); FRESH_PM(always);
+        ev_set_pause_mode(0);
+        CHECK(same_pcm(never, first), "shorten pauses Never: the engine's own output, byte for byte (%d frames)", never.n);
+        CHECK(always.n > 0 && always.n < never.n,
+              "shorten pauses Always: %d frames vs %d Never (%.0f ms shorter)",
+              always.n, never.n, (never.n - always.n) * 1000.0 / EV_NATIVE_SAMPLE_RATE);
+        CHECK(end.n > 0 && end.n <= never.n && end.n >= always.n,
+              "shorten pauses Only at end of text: %d frames, between Always and Never (%.0f ms shorter than Never)",
+              end.n, (never.n - end.n) * 1000.0 / EV_NATIVE_SAMPLE_RATE);
+        v = ev_voice_open(1);
+        a = say(v, commas, vp, 0, &rc);
+        ev_set_pause_mode(2);
+        b = say(v, commas, vp, 0, &rc);
+        ev_set_pause_mode(0);
+        c = say(v, commas, vp, 0, &rc);
+        ev_voice_close(v);
+        CHECK(same_pcm(a, never) && same_pcm(b, always) && same_pcm(c, never),
+              "shorten pauses on a handle in use: Always heard on its next utterance (%d frames), Never again after it (%d)",
+              b.n, c.n);
+#undef FRESH_PM
+        free(first.pcm); free(never.pcm); free(end.pcm); free(always.pcm); free(a.pcm); free(b.pcm); free(c.pcm);
     }
 
     printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);

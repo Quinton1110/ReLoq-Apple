@@ -44,7 +44,7 @@
 //   22050 Hz: flat, Bright on a new synthesizer, treble +12 on the SAME synthesizer (a handle in use hears it on its
 //   next utterance), Mellow on a new one, and everything back to the defaults (11025, flat, Mellow off) at the end.
 //   Each render is saved for the Mac to measure bands on.
-//  -evResetSound (development, devicectl): the sample rate, equalizer, treble and Mellow back to the defaults, and
+//  -evResetSound (development, devicectl): the sample rate, equalizer, treble, Mellow and Shorten pauses back to the defaults, and
 //   exit - how a test value is put back without the rest of the self-test.
 //  With -evDictSelfTest as well: before the cases, the app downloads/validates/installs the latest
 //  release exactly as "Update now" does (network), then renders "iPhone and iMessage" in THIS process
@@ -101,13 +101,15 @@ enum SelfTest {
     private static let glen = ELOQUENCE_VOICES.first { $0.slug == "glen" }!
 
     private static var soundSummary: String {
-        "rate=\(store.sampleRate) equalizer=\(store.tone.rawValue) treble=\(store.trebleDB) mellow=\(store.mellow)"
+        "rate=\(store.sampleRate) equalizer=\(store.tone.rawValue) treble=\(store.trebleDB) mellow=\(store.mellow)" +
+            " pauses=\(store.shortenPauses.rawValue)"
     }
     private static func resetSound() {
         store.sampleRate = OutputSampleRate.native
         store.tone = .off
         store.trebleDB = 0
         store.mellow = false
+        store.shortenPauses = .never
     }
     private static func setTone(_ t: ToneSetting, treble: Int = 0, mellow: Bool = false) {
         store.tone = t
