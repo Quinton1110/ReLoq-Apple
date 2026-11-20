@@ -37,8 +37,7 @@ enum PronunciationDictionary {
 
     /// <app group>/Library/Dictionaries - nil when the group container cannot be opened.
     static var baseURL: URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: ELOQUENCE_APP_GROUP)
-            .map(DictionaryLocations.community(in:))
+        AppGroup.containerURL.map(DictionaryLocations.community(in:))
     }
 
     /// The installed release's folder, if there is one and its US English files are there.
@@ -63,8 +62,7 @@ enum PronunciationDictionary {
     /// <group>/Library/UserDictionary as it always was, the others beside it). Never under
     /// Library/Dictionaries, whose folders the updater replaces and cleans up.
     static func userDirectoryURL(for lang: EloquenceLanguage = ELOQUENCE_US_ENGLISH) -> URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: ELOQUENCE_APP_GROUP)
-            .map { DictionaryLocations.user(in: $0, language: lang.code) }
+        AppGroup.containerURL.map { DictionaryLocations.user(in: $0, language: lang.code) }
     }
 
     static func userStore(for lang: EloquenceLanguage = ELOQUENCE_US_ENGLISH) -> UserDictionaryStore? {

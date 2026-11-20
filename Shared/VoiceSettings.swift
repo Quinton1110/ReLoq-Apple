@@ -17,15 +17,8 @@
 
 import Foundation
 
-/// The app group both targets share. ClassicVoices measured on the phone that the extension can
-/// READ the group but not write to it - reading is all this needs. On macOS the group must start
-/// with the team ID (Sapple's rule: a team-prefixed group needs no provisioning profile for a
-/// Developer ID app), so the Mac build has its own name; the two never meet.
-#if os(macOS)
-let ELOQUENCE_APP_GROUP = "ZGJQ5DZFK2.com.quinton.eloquencevoices"
-#else
-let ELOQUENCE_APP_GROUP = "group.com.quinton.eloquencevoices"
-#endif
+// The app group both targets share is `AppGroup.id` (AppGroup.swift): the entitlements' group for a copy installed
+// directly, the re-signed one for a copy installed through AltStore or SideStore.
 
 struct VoiceSettings: Codable, Equatable {
     var gender: Int          // 0 male, 1 female
@@ -158,12 +151,14 @@ final class VoiceSettingsStore {
     var groupDefaults: UserDefaults { defaults }
     /// false = the app group could not be opened and this process fell back to its own defaults
     /// (then the extension cannot see the app's changes - shown in the app's "This build" section).
+    /// UserDefaults(suiteName:) gives a defaults object even for a group this copy is not granted (a file of
+    /// this process's own), so the group counts as shared only when its container opens too.
     let isShared: Bool
 
     init() {
-        if let d = UserDefaults(suiteName: ELOQUENCE_APP_GROUP) {
+        if let d = AppGroup.makeDefaults() {
             defaults = d
-            isShared = true
+            isShared = AppGroup.containerURL != nil
         } else {
             defaults = .standard
             isShared = false

@@ -316,7 +316,7 @@ enum SelfTest {
         // nothing appears until the process exits, and a run that is killed prints nothing at all.
         setvbuf(stdout, nil, _IONBF, 0)
         try? FileManager.default.removeItem(at: reportURL)
-        report("EVSELFTEST start engine=\(EloquenceEngine.engineDescription) sharedSettings=\(store.isShared)")
+        report("EVSELFTEST start engine=\(EloquenceEngine.engineDescription) sharedSettings=\(store.isShared) group=\(AppGroup.id)")
         UIApplication.shared.isIdleTimerDisabled = true
         // Launched from the Mac while the phone is in someone's hand, the app may not be in front: ask for
         // background time, or iOS can suspend it between two cases (both rate runs on the Air stopped after the

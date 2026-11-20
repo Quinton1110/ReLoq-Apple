@@ -10,9 +10,9 @@ RELOQ   ?= Engine/Reloq-C
 RELOQ_LIB ?= Engine/reloq.xcframework/macos-arm64/libreloq.a
 JOBS    ?= 8
 
-.PHONY: test bridge-test ssml-test userdict-test engine engine-check engine-test release clean
+.PHONY: test bridge-test ssml-test userdict-test appgroup-test engine engine-check engine-test release clean
 
-test: bridge-test ssml-test userdict-test
+test: bridge-test ssml-test userdict-test appgroup-test
 
 # ReLoq C from the submodule -> Engine/reloq.xcframework + Engine/reloq-include (eci.h, reloq_eci.h,
 # reloq_build.h). reloq_build.h names the ReLoq C commit, which the app shows as its engine line
@@ -50,6 +50,16 @@ userdict-test: build/mac/userdict_test
 build/mac/userdict_test: Shared/UserDictionary.swift Shared/DictionarySchedule.swift Shared/PhoneticRespelling.swift Shared/ListenMarker.swift Tests/userdict/main.swift
 	@mkdir -p build/mac
 	swiftc -O Shared/UserDictionary.swift Shared/DictionarySchedule.swift Shared/PhoneticRespelling.swift Shared/ListenMarker.swift Tests/userdict/main.swift -o $@
+
+# The app group resolver (Shared/AppGroup.swift, exactly as the targets compile it): a copy installed directly keeps
+# the entitlements' group; a copy AltStore or SideStore re-signed uses the group they list under ALTAppGroups in its
+# Info.plist, and the app and the extension agree. Given bundle paths it prints what each resolves to.
+appgroup-test: build/mac/appgroup_test
+	@./build/mac/appgroup_test
+
+build/mac/appgroup_test: Shared/AppGroup.swift Tests/appgroup/main.swift
+	@mkdir -p build/mac
+	swiftc -O Shared/AppGroup.swift Tests/appgroup/main.swift -o $@
 
 build/mac/ssml_test: Shared/SSML.swift Tests/ssml/main.swift
 	@mkdir -p build/mac
