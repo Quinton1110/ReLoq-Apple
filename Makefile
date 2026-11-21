@@ -10,9 +10,9 @@ RELOQ   ?= Engine/Reloq-C
 RELOQ_LIB ?= Engine/reloq.xcframework/macos-arm64/libreloq.a
 JOBS    ?= 8
 
-.PHONY: test bridge-test ssml-test userdict-test appgroup-test engine engine-check engine-test dict-live-test release clean
+.PHONY: test bridge-test ssml-test userdict-test appgroup-test dictcopies-test engine engine-check engine-test dict-live-test release clean
 
-test: bridge-test ssml-test userdict-test appgroup-test
+test: bridge-test ssml-test userdict-test appgroup-test dictcopies-test
 
 # ReLoq C from the submodule -> Engine/reloq.xcframework + Engine/reloq-include (eci.h, reloq_eci.h,
 # reloq_build.h). reloq_build.h names the ReLoq C commit, which the app shows as its engine line
@@ -60,6 +60,17 @@ appgroup-test: build/mac/appgroup_test
 build/mac/appgroup_test: Shared/AppGroup.swift Tests/appgroup/main.swift
 	@mkdir -p build/mac
 	swiftc -O Shared/AppGroup.swift Tests/appgroup/main.swift -o $@
+
+# The downloaded dictionaries, one copy per source (Shared/DictionaryCopies.swift, exactly as the targets compile it):
+# a copy from before gets its sidecar from the settings, switching back to a source downloaded before uses its copy with
+# no download, an update replaces only that source's older copy, the "Downloaded dictionaries" list, its VoiceOver
+# labels and Remove. On folders of its own, with plain settings (never the app group).
+dictcopies-test: build/mac/dictcopies_test
+	@./build/mac/dictcopies_test
+
+build/mac/dictcopies_test: Shared/DictionaryCopies.swift Shared/DictionarySource.swift Shared/UserDictionary.swift Shared/PhoneticRespelling.swift Shared/ListenMarker.swift Tests/dictcopies/main.swift
+	@mkdir -p build/mac
+	swiftc -O Shared/DictionaryCopies.swift Shared/DictionarySource.swift Shared/UserDictionary.swift Shared/PhoneticRespelling.swift Shared/ListenMarker.swift Tests/dictcopies/main.swift -o $@
 
 build/mac/ssml_test: Shared/SSML.swift Tests/ssml/main.swift
 	@mkdir -p build/mac

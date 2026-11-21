@@ -49,6 +49,11 @@
 //  With -evDictSelfTest as well: before the cases, the app downloads/validates/installs the latest
 //  release exactly as "Update now" does (network), then renders "iPhone and iMessage" in THIS process
 //  with the dictionary off and on and reports both frame counts.
+//  -evDictCopiesSelfTest (instead of the cases above; network; best on the SIMULATOR, whose app group is its own): the
+//   downloaded dictionaries through the real DictionaryUpdater - eigencrow in force, a switch to AltIBMTTSDictionaries
+//   (downloaded), a switch BACK to eigencrow (its copy in force again with NO GitHub check: checks= stays put), Alt then
+//   listed under "Downloaded dictionaries" and removed, and the settings found at the start put back. Every step is one
+//   "EVSELFTEST copies ..." line; "EVSELFTEST copies result ok=N failed=M" ends it.
 //  The extension's own log line per request (rateSource=ssml|voiceMemory|anyMemory|default and the
 //  eight values it told the engine) is read back from the Mac:
 //   xcrun simctl spawn <udid> log show --last 5m --predicate 'subsystem == "com.quinton.eloquencevoices"'
@@ -331,6 +336,14 @@ enum SelfTest {
             report("EVSELFTEST preset \(def.slug) engineName=\"\(EloquenceEngine.shared.engineVoiceName(for: def))\" \(EloquenceEngine.shared.presetSettings(for: def).summary)")
         }
         AVSpeechSynthesisProviderVoice.updateSpeechVoices()
+        if ProcessInfo.processInfo.arguments.contains("-evDictCopiesSelfTest") {
+            Task { @MainActor in
+                await dictionaryCopiesPass()
+                report("EVSELFTEST done cases=0")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exit(0) }
+            }
+            return
+        }
         if ProcessInfo.processInfo.arguments.contains("-evDictSelfTest") {
             Task { @MainActor in
                 let status = await DictionaryUpdater.shared.updateForSelfTest()
@@ -341,6 +354,67 @@ enum SelfTest {
         } else {
             enumerate(attempt: 1)
         }
+    }
+
+    /// -evDictCopiesSelfTest (see the header).
+    @MainActor private static func dictionaryCopiesPass() async {
+        let u = DictionaryUpdater.shared
+        var ok = 0, failed = 0
+        func expect(_ cond: Bool, _ what: String) {
+            if cond { ok += 1 } else { failed += 1 }
+            report("EVSELFTEST copies \(cond ? "ok" : "FAIL") \(what)")
+        }
+        func settle() async {
+            try? await Task.sleep(nanoseconds: 800_000_000)          // a Task the updater started gets going
+            var waited = 0
+            while u.isBusy && waited < 240 { try? await Task.sleep(nanoseconds: 500_000_000); waited += 1 }
+        }
+        func state() -> String {
+            "folder=\(store.dictionaryFolder ?? "none") source=\(store.installedDictionarySource) tag=\(store.dictionaryTag ?? "none")" +
+                " counts=\(store.communityCounts) checks=\(u.checks) status=\"\(u.status)\" listed=\(u.downloaded.map(\.spokenLabel))"
+        }
+        let wasOn = store.dictionaryEnabled, wasChoice = store.dictionarySourceChoice
+        report("EVSELFTEST copies start enabled=\(wasOn) choice=\(wasChoice.rawValue) \(state())")
+        store.dictionaryEnabled = true
+        u.setSource(.eigencrow)
+        await settle()
+        if u.installedTag == nil { _ = await u.updateForSelfTest() }
+        let eFolder = store.dictionaryFolder, eTag = store.dictionaryTag, eCounts = store.communityCounts
+        report("EVSELFTEST copies eigencrow \(state())")
+        expect(eFolder != nil && eTag != nil && PronunciationDictionary.installedFolder() != nil, "eigencrow in force")
+
+        u.setSource(.alternative)
+        await settle()
+        report("EVSELFTEST copies alternative \(state())")
+        let aFolder = store.dictionaryFolder
+        expect(aFolder != nil && aFolder != eFolder && store.installedDictionarySource == DictionarySource.alternative.id
+               && PronunciationDictionary.installedFolder() != nil, "AltIBMTTSDictionaries in force, in a folder of its own")
+        expect(u.downloaded.contains { $0.id == eFolder }, "eigencrow's copy kept and listed")
+
+        let checksBefore = u.checks
+        u.setSource(.eigencrow)
+        expect(store.dictionaryFolder == eFolder && store.dictionaryTag == eTag && store.communityCounts == eCounts
+               && PronunciationDictionary.installedFolder()?.lastPathComponent == eFolder,
+               "switching back: eigencrow's copy in force at once, its version and counts restored")
+        await settle()
+        report("EVSELFTEST copies back \(state())")
+        expect(u.checks == checksBefore && !u.isBusy, "no GitHub check, no download for the switch back")
+        let altRow = u.downloaded.first { $0.id == aFolder }
+        expect(altRow?.name == "AltIBMTTSDictionaries by Mohamed00", "Alt listed: \(altRow?.spokenLabel ?? "-")")
+        if let altRow {
+            u.remove(altRow)
+            let gone = PronunciationDictionary.baseURL.map {
+                !FileManager.default.fileExists(atPath: $0.appendingPathComponent(altRow.id).path) } ?? false
+            expect(gone && !u.downloaded.contains { $0.id == altRow.id } && u.status == altRow.removedStatus,
+                   "Alt removed: \"\(u.status)\"")
+        }
+        expect(PronunciationDictionary.installedFolder()?.lastPathComponent == eFolder, "eigencrow still in force")
+
+        store.dictionaryEnabled = wasOn
+        u.setSource(wasChoice)
+        await settle()
+        report("EVSELFTEST copies restored enabled=\(store.dictionaryEnabled) choice=\(store.dictionarySourceChoice.rawValue) \(state())")
+        report("EVSELFTEST copies result ok=\(ok) failed=\(failed)")
     }
 
     /// In this process: "iPhone and iMessage" with the dictionary off, then on (fresh handles each).

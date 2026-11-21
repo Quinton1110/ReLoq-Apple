@@ -8,13 +8,17 @@
 //    (api.github.com/repos/<owner>/<repo>/releases/latest -> tag_name, published_at; with no release, the
 //    default branch's latest commit), the .dic files found at that tag in any folder and any case
 //    (DictionaryLayout), downloaded from raw.githubusercontent.com and installed under the app's own names.
-//    Switching the source downloads the new one's latest release; until that is in, no community set is in
-//    force (one source at a time). The user's own entries are untouched by all of this.
+//    Each source keeps its own downloaded copy (Shared/DictionaryCopies.swift): switching to a source already
+//    downloaded uses its copy at once, with no download; switching to one not downloaded yet downloads its latest
+//    release, and until that is in no community set is in force (one source at a time). The copies not in use are
+//    listed under "Downloaded dictionaries", each with a Remove button. The user's own entries are untouched by all
+//    of this.
 //  - A download goes into a fresh folder of its own. It is validated (every file non-empty and parsed by
 //    the bridge into entries) BEFORE the settings are pointed at it, so the
 //    previous copy stays in use until the new one is complete; a failed or partial download is deleted
-//    and the old copy is untouched. Folders no longer in use are removed at the next launch, not at the
-//    moment of switching, so the extension is never reading a file that has just been deleted.
+//    and the old copy is untouched. An update replaces only that source's older copy, which is removed at the
+//    next launch or return to the app, not at the moment of switching, so the extension is never reading a file
+//    that has just been deleted.
 //  - Auto-update (off by default): Daily, Weekly or Monthly as the user chooses (default Monthly,
 //    Shared/DictionarySchedule.swift decides), checked when the app launches or comes forward.
 //
@@ -31,6 +35,10 @@ final class DictionaryUpdater: ObservableObject {
     @Published private(set) var installedTag: String?
     @Published private(set) var installedPublished: Date?
     @Published private(set) var counts: [Int] = []
+    /// "Downloaded dictionaries": the copies on disk not in use (DictionaryCopies.listed).
+    @Published private(set) var downloaded: [DownloadedDictionary] = []
+    /// Development only (SelfTest -evDictCopiesSelfTest): how many times GitHub was asked for a release.
+    private(set) var checks = 0
 
     private let store = VoiceSettingsStore.shared
 
@@ -38,7 +46,15 @@ final class DictionaryUpdater: ObservableObject {
 
     // MARK: - What the UI shows
 
+    /// Also: gives a copy from before sidecars its sidecar, and when nothing is in force for the chosen source but a
+    /// copy of it is on disk, makes that copy the one in force (a switch back to a source downloaded before).
     func refreshInstalled() {
+        if let base = PronunciationDictionary.baseURL {
+            DictionaryCopies.migrate(base: base, state: store)
+            DictionaryCopies.activateKeptCopy(chosen: store.dictionarySource?.id, base: base, state: store,
+                                              files: PronunciationDictionary.files)
+        }
+        refreshDownloaded()
         if PronunciationDictionary.installedFolder(store) != nil {
             installedTag = store.dictionaryTag
             installedPublished = store.dictionaryPublished
@@ -60,10 +76,13 @@ final class DictionaryUpdater: ObservableObject {
     }
 
     /// A release tag as the main screen shows it: "v26.09" -> "26.09".
-    static func versionText(_ tag: String) -> String {
-        var version = tag
-        if version.first == "v" || version.first == "V" { version.removeFirst() }
-        return version
+    static func versionText(_ tag: String) -> String { DictionaryCopies.versionText(tag) }
+
+    private func refreshDownloaded() {
+        guard let base = PronunciationDictionary.baseURL else { downloaded = []; return }
+        downloaded = DictionaryCopies.listed(DictionaryCopies.scan(base),
+                                             inUse: PronunciationDictionary.installedFolder(store)?.lastPathComponent,
+                                             active: store.dictionaryFolder)
     }
 
     static func dateText(_ d: Date, now: Date = Date()) -> String {
@@ -98,8 +117,8 @@ final class DictionaryUpdater: ObservableObject {
         Task { await checkIfDue() }
     }
 
-    /// The "Dictionary source" picker. A different source is downloaded at once when the dictionary is on (else
-    /// when it is switched on); Custom waits for a link.
+    /// The "Dictionary source" picker. A source downloaded before is used at once from its copy; one not downloaded
+    /// yet is downloaded at once when the dictionary is on (else when it is switched on); Custom waits for a link.
     func setSource(_ choice: DictionarySourceChoice) {
         store.dictionarySourceChoice = choice
         refreshInstalled()
@@ -117,9 +136,26 @@ final class DictionaryUpdater: ObservableObject {
         }
         store.dictionaryCustomLink = source.id
         store.dictionarySourceChoice = .custom
-        refreshInstalled()
+        refreshInstalled()          // a repository downloaded before: its copy, then the check below says if it is current
         status = ""
         Task { await update(reason: .source) }      // a link given is a request to fetch it, on or off
+    }
+
+    /// A "Downloaded dictionaries" row's Remove button: its folder and its sidecar go.
+    func remove(_ d: DownloadedDictionary) {
+        guard !isBusy else { return }
+        guard let base = PronunciationDictionary.baseURL else {
+            status = "Couldn't remove: " + Self.describe(DictionarySourceError.noContainer)
+            return
+        }
+        do {
+            try DictionaryCopies.remove(d.id, base: base, state: store,
+                                        inUse: PronunciationDictionary.installedFolder(store)?.lastPathComponent)
+            status = d.removedStatus
+        } catch {
+            status = "Couldn't remove \(d.isKnown ? d.name : "unknown dictionary")."
+        }
+        refreshInstalled()
     }
 
     /// "Update now".
@@ -127,7 +163,7 @@ final class DictionaryUpdater: ObservableObject {
         Task { await update(reason: .manual) }
     }
 
-    /// App launch / coming forward: remove folders no longer used; if auto-update is on and the last
+    /// App launch / coming forward: remove a source's superseded copies; if auto-update is on and the last
     /// check was long enough ago, check for a newer release.
     func appBecameActive() {
         removeUnusedFolders()
@@ -160,27 +196,36 @@ final class DictionaryUpdater: ObservableObject {
         isBusy = true
         defer {
             isBusy = false
-            // The source was changed while this one was downloading: fetch the one now chosen.
-            if let now = store.dictionarySource, now != source, store.dictionaryEnabled {
+            // The source was changed while this one was downloading: fetch the one now chosen, unless its copy from
+            // before is already in force (setSource made it so).
+            refreshInstalled()
+            if let now = store.dictionarySource, now != source, store.dictionaryEnabled,
+               PronunciationDictionary.installedFolder(store) == nil {
                 Task { await update(reason: .source) }
             }
         }
         status = "Checking..."
+        checks += 1
         do {
             let snap = try await fetcher.latest(source)
             store.dictionaryLastCheck = Date()
             // Layout 2 (2026-09-24) also carries the other languages' files: an install from before is
             // fetched again once, even at the same tag, so German arrives without waiting for a release.
             if snap.version == store.dictionaryTag, PronunciationDictionary.installedFolder(store) != nil,
-               store.groupDefaults.integer(forKey: "dict.layout") >= 2 {
+               store.dictionaryLayout >= 2 {
                 status = "Up to date."
                 return
             }
             status = "Downloading \(Self.versionText(snap.version))..."
-            _ = try await install(snap)
+            let inForce = try await install(snap)
             refreshInstalled()
-            status = "Updated to \(Self.versionText(snap.version))."
-                + (store.dictionaryEnabled ? "" : " Dictionary is off.")
+            if inForce {
+                status = "Updated to \(Self.versionText(snap.version))."
+                    + (store.dictionaryEnabled ? "" : " Dictionary is off.")
+            } else {
+                // Another source was chosen while this one downloaded: kept as a copy, not used.
+                status = "Downloaded \(DictionarySource.displayName(snap.source.id)) \(Self.versionText(snap.version))."
+            }
         } catch {
             let why = Self.describe(error)
             if store.dictionaryTag != nil, PronunciationDictionary.installedFolder(store) != nil {
@@ -226,9 +271,10 @@ final class DictionaryUpdater: ObservableObject {
 
     private var fetcher: DictionaryFetcher { DictionaryFetcher(session: session, userAgent: "ReLoq-Apple") }
 
-    /// Downloads the snapshot's files into a new folder, validates them (each parses into entries), then points
-    /// the settings at it. Returns the US English entry counts [main, root, abbr] (0 = that kind not published).
-    private func install(_ snap: DictionarySnapshot) async throws -> [Int] {
+    /// Downloads the snapshot's files into a new folder with its sidecar, validates them (each parses into entries),
+    /// then, when its source is still the one chosen, points the settings at it. Returns whether it did (false: the
+    /// user chose another source meanwhile, and the copy is kept for when they come back to this one).
+    private func install(_ snap: DictionarySnapshot) async throws -> Bool {
         guard let base = PronunciationDictionary.baseURL else { throw DictionarySourceError.noContainer }
         let fm = FileManager.default
         try fm.createDirectory(at: base, withIntermediateDirectories: true)
@@ -242,31 +288,31 @@ final class DictionaryUpdater: ObservableObject {
             let prefixes = langs.compactMap { $0.communityPrefix?.uppercased() }
             let got = try await fetcher.download(snap, prefixes: prefixes, into: incoming,
                                                  count: { Int(ev_dict_count_entries($0.path)) })
+            var counts: [String: [Int]] = [:]
+            for lang in langs {
+                if let c = lang.communityPrefix.flatMap({ got[$0.uppercased()] }) { counts[lang.code] = c }
+            }
+            let info = DictionaryCopies.info(for: snap, counts: counts, layout: 2)
+            try DictionaryCopies.write(info, to: incoming)
             let final = base.appendingPathComponent(folder, isDirectory: true)
             try fm.moveItem(at: incoming, to: final)
-            // Only now does anything point at the new copy.
-            store.dictionaryFolder = folder
-            store.installedDictionarySource = snap.source.id
-            store.dictionaryTag = snap.version
-            store.dictionaryPublished = snap.published
-            store.groupDefaults.set(2, forKey: "dict.layout")
-            for lang in langs {
-                store.setDictionaryCounts(lang.communityPrefix.flatMap { got[$0.uppercased()] } ?? [], for: lang)
+            // Only now does anything point at the new copy (and only if its source is still the chosen one). The
+            // source's older copy stays until cleanUp, at the next launch or return to the app.
+            guard let chosen = store.dictionarySource, DictionaryCopies.sameSource(chosen.id, snap.source.id) else {
+                return false
             }
-            return store.dictionaryCounts
+            DictionaryCopies.activate(DictionaryCopy(folder: folder, info: info, bytes: 0), as: chosen.id, state: store)
+            return true
         } catch {
             try? fm.removeItem(at: incoming)
             throw error
         }
     }
 
-    /// Everything under Library/Dictionaries except the folder in use (and a download in progress).
+    /// A source's older copies and a crashed download's leftovers (never while a download runs). The copies of other
+    /// sources stay: they are listed under "Downloaded dictionaries" for the user to keep or remove.
     private func removeUnusedFolders() {
-        guard !isBusy, let base = PronunciationDictionary.baseURL,
-              let names = try? FileManager.default.contentsOfDirectory(atPath: base.path) else { return }
-        let keep = store.dictionaryFolder
-        for n in names where n != keep {
-            try? FileManager.default.removeItem(at: base.appendingPathComponent(n))
-        }
+        guard let base = PronunciationDictionary.baseURL else { return }
+        DictionaryCopies.cleanUp(base: base, state: store, downloading: isBusy)
     }
 }

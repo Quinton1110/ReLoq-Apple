@@ -126,6 +126,28 @@ struct ContentView: View {
                             .disabled(dictionary.isBusy
                                       || dictCustomLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
+                    if !dictionary.downloaded.isEmpty {
+                        // The copies of other sources kept on disk (DictionaryCopies.swift); the one in use is not
+                        // listed. Each row is one element for VoiceOver, its Remove button another.
+                        Text("Downloaded dictionaries")
+                            .font(.headline)
+                            .accessibilityAddTraits(.isHeader)
+                        ForEach(dictionary.downloaded) { d in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(d.name)
+                                    Text(d.detail).font(.footnote).foregroundStyle(.secondary)
+                                }
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(d.spokenLabel)
+                                Spacer()
+                                Button("Remove") { dictionary.remove(d) }
+                                    .buttonStyle(.borderless)      // only the button acts, not a tap on the row
+                                    .accessibilityLabel(d.removeLabel)
+                                    .disabled(dictionary.isBusy)
+                            }
+                        }
+                    }
                     Toggle("Update automatically", isOn: Binding(
                         get: { dictAutoUpdate },
                         set: { on in dictAutoUpdate = on; dictionary.setAutoUpdate(on) }))

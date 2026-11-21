@@ -45,12 +45,10 @@ enum PronunciationDictionary {
     /// one US English file. A set from another source is not used: one source at a time, and a switch that has
     /// not finished downloading leaves no community dictionary in force rather than the old one.
     static func installedFolder(_ store: VoiceSettingsStore = .shared) -> URL? {
-        guard let name = store.dictionaryFolder, !name.isEmpty, let base = baseURL,
-              let chosen = store.dictionarySource, store.installedDictionarySource == chosen.id else { return nil }
-        let dir = base.appendingPathComponent(name, isDirectory: true)
-        guard files.contains(where: { FileManager.default.fileExists(atPath: dir.appendingPathComponent($0).path) })
-        else { return nil }
-        return dir
+        guard let name = store.dictionaryFolder, !name.isEmpty, let base = baseURL else { return nil }
+        return DictionaryCopies.folderInForce(base: base, folder: name,
+                                              installedSource: store.installedDictionarySource,
+                                              chosen: store.dictionarySource?.id, files: files)
     }
 
     /// The installed release's files for one language, [main, root, abbr] with nil for a kind it does not have;
@@ -175,6 +173,7 @@ extension VoiceSettingsStore {
         static let source = "dict.source"
         static let customSource = "dict.customSource"
         static let installedSource = "dict.installedSource"
+        static let layout = "dict.layout"
         static let voiceTags = "engine.voiceTags"
         static let phrasePrediction = "engine.phrasePrediction"
     }
@@ -273,5 +272,28 @@ extension VoiceSettingsStore {
     var dictionaryCounts: [Int] {
         get { groupDefaults.array(forKey: DictKey.counts) as? [Int] ?? [] }
         set { groupDefaults.set(newValue, forKey: DictKey.counts) }
+    }
+
+    /// The installed copy's file layout (2 since 2026-09-24: every language's files, not only US English's).
+    var dictionaryLayout: Int {
+        get { groupDefaults.integer(forKey: DictKey.layout) }
+        set { groupDefaults.set(newValue, forKey: DictKey.layout) }
+    }
+}
+
+/// What DictionaryCopies (Shared/DictionaryCopies.swift) reads and writes when a copy becomes the one in force: the same
+/// keys as always, so the extension reads them as it always has.
+extension VoiceSettingsStore: DictionaryActiveState {
+    var communityCounts: [String: [Int]] {
+        get {
+            var out: [String: [Int]] = [:]
+            for lang in PronunciationDictionary.communityLanguages where !dictionaryCounts(for: lang).isEmpty {
+                out[lang.code] = dictionaryCounts(for: lang)
+            }
+            return out
+        }
+        set {
+            for lang in PronunciationDictionary.communityLanguages { setDictionaryCounts(newValue[lang.code] ?? [], for: lang) }
+        }
     }
 }

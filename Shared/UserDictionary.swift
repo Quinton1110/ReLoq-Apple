@@ -86,8 +86,9 @@ struct DictionaryEntry: Identifiable, Hashable, Sendable {
 // MARK: - Where the files live, under the app-group container
 
 enum DictionaryLocations {
-    /// The community releases: <container>/Library/Dictionaries/<release folder>/. The updater downloads
-    /// into here and removes every folder here but the one in use.
+    /// The community releases: <container>/Library/Dictionaries/<release folder>/, one kept per source
+    /// (DictionaryCopies.swift). The updater downloads into here and removes a source's older copies and,
+    /// when the user asks, a copy not in use.
     static func community(in container: URL) -> URL {
         container.appendingPathComponent("Library", isDirectory: true)
             .appendingPathComponent("Dictionaries", isDirectory: true)

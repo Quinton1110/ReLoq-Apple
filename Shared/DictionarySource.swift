@@ -38,6 +38,15 @@ struct DictionarySource: Equatable, Hashable, Sendable {
     static let eigencrow = DictionarySource(owner: "eigencrow", repo: "IBMTTSDictionaries")
     static let alternative = DictionarySource(owner: "Mohamed00", repo: "AltIBMTTSDictionaries")
 
+    /// How a source is named to the user, from its "owner/repo": the picker's own title for the two offered ones (in
+    /// any case), "repo by owner" for any other ("ecobox-web by ogomez92").
+    static func displayName(_ id: String) -> String {
+        if id.lowercased() == eigencrow.id.lowercased() { return DictionarySourceChoice.eigencrow.title }
+        if id.lowercased() == alternative.id.lowercased() { return DictionarySourceChoice.alternative.title }
+        let parts = id.split(separator: "/")
+        return parts.count == 2 ? "\(parts[1]) by \(parts[0])" : id
+    }
+
     /// A repository from what the user typed or pasted: https://github.com/owner/repo (http, www, a trailing
     /// .git, slash or path such as /tree/master/x or /releases all allowed), github.com/owner/repo,
     /// git@github.com:owner/repo.git, or plain owner/repo. nil for anything else, including other hosts.
