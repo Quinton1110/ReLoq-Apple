@@ -253,6 +253,53 @@ int main(void)
         ev_voice_close(plain);
         ev_voice_close(withd);
     }
+    /* 2b. UK English with the US community files (ev_bridge.h "UK ENGLISH AND THE US FILES"; measured 2026-11-22):
+       the brand words read as in US English, no entry is read out as text ("backquote left bracket ..." is what the
+       UK engine does with a US annotation it cannot say), entries with the flap are left to the UK engine, and US
+       English is untouched by any of it. */
+    if (dir && *dir) {
+        static const struct { const char *word, *want; } W[] = {
+            { "iPhone", "`[.1Y.2fon]" }, { "iMessage", "`[.1Y.2mE.0sXJ]" }, { "iPad", "`[.1Y.2pAd]" },
+            { "WiFi", "`[.1wY.2fY]" }, { "coauthor", "`[.2ko.1c.0Tx]" } };
+        static const char *text_free[] = { "Parton", "cater-corner", "tete-a-tete", "computer", "water" };
+        char mainp[1024], rootp[1024], abbrp[1024], before[512];
+        ev_voice *uk = ev_voice_open_lang(1, EV_LANG_ENGB), *us = ev_voice_open_lang(1, EV_LANG_ENUS);
+        ev_voice_params vp;
+        buf_t b;
+        int i, bad = 0;
+        ev_voice_preset_params(uk, &vp);
+        snprintf(mainp, sizeof mainp, "%s/ENUmain.dic", dir);
+        snprintf(rootp, sizeof rootp, "%s/ENURoot.dic", dir);
+        snprintf(abbrp, sizeof abbrp, "%s/ENUabbr.dic", dir);
+        b = say(uk, "warm up", vp, 0, &rc); free(b.pcm);
+        strncpy(before, phonemes(uk, "cater-corner"), sizeof before - 1); before[sizeof before - 1] = 0;
+        ev_dict_configure_lang(EV_LANG_ENGB, mainp, rootp, abbrp);
+        b = say(uk, "warm up", vp, 0, &rc); free(b.pcm);
+        {
+            ev_dict_report r;
+            ev_voice_dict_report(uk, &r);
+            CHECK(r.in_force && r.main_rc == 0 && r.abbr_rc == 0, "UK English: the adapted US files load (main rc %d, abbr rc %d)",
+                  r.main_rc, r.abbr_rc);
+        }
+        for (i = 0; i < (int)(sizeof W / sizeof W[0]); i++) {
+            const char *got;
+            b = say(uk, W[i].word, vp, 0, &rc); free(b.pcm);
+            got = phonemes(uk, W[i].word);
+            if (!strstr(got, W[i].want)) { bad++; printf("     UK %s: %s (want %s)\n", W[i].word, got, W[i].want); }
+        }
+        CHECK(bad == 0, "UK English: iPhone, iMessage, iPad, WiFi, coauthor read as the adapted US entries say");
+        for (i = 0, bad = 0; i < (int)(sizeof text_free / sizeof text_free[0]); i++) {
+            b = say(uk, text_free[i], vp, 0, &rc); free(b.pcm);
+            if (strstr(phonemes(uk, text_free[i]), "kwot")) { bad++; printf("     UK %s read out as text\n", text_free[i]); }
+        }
+        CHECK(bad == 0, "UK English: no entry is read out as text (\"backquote ...\")");
+        b = say(uk, "cater-corner", vp, 0, &rc); free(b.pcm);
+        CHECK(strcmp(phonemes(uk, "cater-corner"), before) == 0, "UK English: a US entry with the flap is left to the UK engine");
+        ev_dict_configure_lang(EV_LANG_ENGB, NULL, NULL, NULL);
+        ev_voice_close(uk);
+        ev_voice_close(us);
+    }
+
     /* 3. the user's own entries (always; with DICT_DIR also against the community files) - written to a
        temporary folder here, nothing persists. A ROOT entry's reading must be one word or a `[...]
        phoneme string: the engine ignores a root replacement with a space in it (measured 2026-09-24,

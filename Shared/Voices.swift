@@ -30,12 +30,15 @@ struct EloquenceLanguage: Hashable, Identifiable, Sendable {
     let eci: Int32              // the engine's language/dialect number
     let name: String            // shown in the app
     let slugSuffix: String      // "" for US English (its slugs predate the others and are permanent)
-    /// The eigencrow/IBMTTSDictionaries file prefix for this language, if the project has files for it
-    /// (v26.09: ENU and DEU only).
+    /// The community dictionary file prefix for this language (ENUmain.dic ...), if any source may have files for it
+    /// (eigencrow v26.11: ENU and DEU only; ENG is asked for in case a source ever publishes UK English).
     let communityPrefix: String?
     /// Other BCP-47 tags the voices are offered for besides `bcp47` (Chinese: ReLoq's one Mandarin
     /// module reads Simplified and Traditional text alike; its NVDA driver lists it once for both).
     var alsoFor: [String] = []
+    /// The files to use when a source has none of this language's own (UK English: the US ones, which the bridge
+    /// adapts for a UK voice - ev_bridge.h "UK ENGLISH AND THE US FILES").
+    var communityFallbackPrefix: String? = nil
     var id: String { code }
 }
 
@@ -43,7 +46,8 @@ struct EloquenceLanguage: Hashable, Identifiable, Sendable {
 /// PERMANENT (they are inside VoiceOver's stored voice identifiers and the dictionary folders).
 private let ALL_KNOWN_LANGUAGES: [EloquenceLanguage] = [
     EloquenceLanguage(code: "enus", bcp47: "en-US", eci: 0x10000, name: "English (United States)", slugSuffix: "", communityPrefix: "ENU"),
-    EloquenceLanguage(code: "engb", bcp47: "en-GB", eci: 0x10001, name: "English (United Kingdom)", slugSuffix: "_engb", communityPrefix: nil),
+    EloquenceLanguage(code: "engb", bcp47: "en-GB", eci: 0x10001, name: "English (United Kingdom)", slugSuffix: "_engb", communityPrefix: "ENG",
+                      communityFallbackPrefix: "ENU"),
     EloquenceLanguage(code: "eses", bcp47: "es-ES", eci: 0x20000, name: "Spanish (Spain)", slugSuffix: "_eses", communityPrefix: nil),
     EloquenceLanguage(code: "esus", bcp47: "es-MX", eci: 0x20001, name: "Spanish (Latin America)", slugSuffix: "_esus", communityPrefix: nil),
     EloquenceLanguage(code: "frfr", bcp47: "fr-FR", eci: 0x30000, name: "French (France)", slugSuffix: "_frfr", communityPrefix: nil),

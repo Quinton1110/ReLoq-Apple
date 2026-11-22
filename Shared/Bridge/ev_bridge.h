@@ -197,6 +197,17 @@ double ev_pitch_dial(double hz);
 #define EV_DICT_ROOT_RESET 2000
 int ev_dict_configure(const char *main_path, const char *root_path, const char *abbr_path);
 
+/* ==================== UK ENGLISH AND THE US FILES ====================
+ * No project publishes UK English community files (ENG*.dic), so the app hands UK English the US ones, and the
+ * bridge adapts each entry for a UK voice (ev_bridge.c "ONE ENGLISH DICTIONARY FOR BOTH DIALECTS"): an entry whose
+ * `[...] phonemes use the flap F or the glottal stop ? is left out (the UK engine cannot say them and would read a
+ * whole-word entry out as text), an unstressed R becomes the schwa x, and everything else goes in unchanged. The
+ * main and abbreviation files are adapted into copies in the process's temporary folder, which a UK handle loads
+ * with eciLoadDict (fast) instead of the US files. No other language,
+ * US English included, is touched. ev_dict_adapt_value is that rule for one replacement: 1 = keep (out holds it,
+ * adapted), 0 = left out, -1 = bad arguments or out too small. */
+int ev_dict_adapt_value(int32_t lang, const char *in, char *out, int room);
+
 /* How many "key TAB replacement" entries a dictionary file holds, as this bridge parses it (the app's
    validation of a download). -1 unreadable. */
 int ev_dict_count_entries(const char *path);

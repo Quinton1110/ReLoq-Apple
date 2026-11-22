@@ -52,16 +52,32 @@ enum PronunciationDictionary {
     }
 
     /// The installed release's files for one language, [main, root, abbr] with nil for a kind it does not have;
-    /// nil when it has none of them.
+    /// nil when it has none of them. A language with a fallback (UK English) uses its own files when the release has
+    /// any, and otherwise the fallback language's (the US ones, which the bridge adapts for it).
     static func installedFiles(for lang: EloquenceLanguage, _ store: VoiceSettingsStore = .shared) -> [URL?]? {
         guard let dir = installedFolder(store) else { return nil }
-        let names = files(for: lang)
-        guard names.count == 3 else { return nil }
-        let urls: [URL?] = names.map { n in
-            let u = dir.appendingPathComponent(n)
-            return FileManager.default.fileExists(atPath: u.path) ? u : nil
+        for prefix in [lang.communityPrefix, lang.communityFallbackPrefix].compactMap({ $0 }) {
+            let urls: [URL?] = DictionaryKind.allCases.map { kind in
+                let u = dir.appendingPathComponent(kind.communityFile(prefix: prefix))
+                return FileManager.default.fileExists(atPath: u.path) ? u : nil
+            }
+            if urls.contains(where: { $0 != nil }) { return urls }
         }
-        return urls.contains(where: { $0 != nil }) ? urls : nil
+        return nil
+    }
+
+    /// A community entry's reading as the language's voices get it (the bridge's rule, ev_dict_adapt_value): UK English
+    /// leaves out a US entry its engine cannot say and turns an unstressed R into a schwa; every other language takes it
+    /// as it is. nil = left out.
+    static func adapted(_ replacement: String, for lang: EloquenceLanguage) -> String? {
+        guard lang.communityFallbackPrefix != nil else { return replacement }
+        var out = [CChar](repeating: 0, count: replacement.utf8.count + 1)
+        let r = replacement.withCString { ev_dict_adapt_value(lang.eci, $0, &out, Int32(out.count)) }
+        switch r {
+        case 1: return String(cString: out)
+        case 0: return nil
+        default: return replacement
+        }
     }
 
     /// The user's own entries of one language (UserDictionary.swift; US English in
@@ -83,7 +99,10 @@ enum PronunciationDictionary {
     static func communityEntries(for lang: EloquenceLanguage = ELOQUENCE_US_ENGLISH,
                                  _ store: VoiceSettingsStore = .shared) -> [DictionaryEntry] {
         guard let urls = installedFiles(for: lang, store) else { return [] }
-        return zip(DictionaryKind.allCases, urls).flatMap { kind, url in url.map { DictionaryFile.load($0, kind: kind) } ?? [] }
+        let all = zip(DictionaryKind.allCases, urls).flatMap { kind, url in url.map { DictionaryFile.load($0, kind: kind) } ?? [] }
+        guard lang.communityFallbackPrefix != nil else { return all }
+        // as the voices get them (UK English: the US entries, adapted)
+        return all.compactMap { e in adapted(e.replacement, for: lang).map { var a = e; a.replacement = $0; return a } }
     }
 
     /// For a preview in the app process only: one language's community files on or off regardless of the

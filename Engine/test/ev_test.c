@@ -313,6 +313,41 @@ int main(int argc, char **argv)
       ev_text_fold_lang("\xef\xa3\xbf" "Pay", EV_LANG_FRFR, got, sizeof got);
       CHECK(strcmp(got, "Apple Pay") == 0, "French: \"%s\"", got); }
 
+    /* UK English and the US community files (ev_bridge.h "UK ENGLISH AND THE US FILES"): what a UK voice gets of
+       each US entry. Measured with ReLoq C 2026-11-22: the UK engine reads an annotation with the flap F or the
+       glottal stop ? out as text, so those entries are left out; an unstressed R becomes the UK schwa x. */
+    { static const struct { const char *in, *out; int keep; } U[] = {
+        { "`[.1Y.2fon]", "`[.1Y.2fon]", 1 },                         /* iphone: the same for both */
+        { "`[.1Y.2mE.0sXJ]", "`[.1Y.2mE.0sXJ]", 1 },                 /* imessage */
+        { "igh oe ess", "igh oe ess", 1 },                           /* ios: a respelling, read with UK rules */
+        { "`[.1fa.0DR]", "`[.1fa.0Dx]", 1 },                         /* father: unstressed R -> x */
+        { "`[.2ko.1c.0TR]", "`[.2ko.1c.0Tx]", 1 },                   /* coauthor */
+        { "`[.1bRd]", "`[.1bRd]", 1 },                               /* bird: a stressed R is UK's NURSE vowel too */
+        { "`[.0dX.1fYl.0R]", "`[.0dX.1fYl.0x]", 1 },                 /* defiler */
+        { "`[.1bE.0FR]", "", 0 },                                     /* better: the flap */
+        { "`[.1par.0?N]", "", 0 },                                    /* Parton: the glottal stop */
+        { "`[.1Y] `[.1o] `2 `[.1Es]", "`[.1Y] `[.1o] `2 `[.1Es]", 1 },/* several annotations, `2 between */
+        { "`[.1ka.0F]x `[.1RR]", "", 0 },                             /* F in any annotation of the entry */
+        { "R and F outside brackets", "R and F outside brackets", 1 },/* only annotations are phonemes */
+      };
+      char got[256]; int k, bad = 0;
+      for (k = 0; k < (int)(sizeof U / sizeof U[0]); k++) {
+          int r = ev_dict_adapt_value(EV_LANG_ENGB, U[k].in, got, sizeof got);
+          if (r != U[k].keep || (r == 1 && strcmp(got, U[k].out) != 0)) {
+              bad++; printf("     UK adapt \"%s\" -> %d \"%s\" (want %d \"%s\")\n", U[k].in, r, got, U[k].keep, U[k].out);
+          }
+      }
+      CHECK(bad == 0, "UK English: %d of %d US entries adapted as the UK engine needs", (int)(sizeof U / sizeof U[0]) - bad,
+            (int)(sizeof U / sizeof U[0]));
+      for (k = 0, bad = 0; k < (int)(sizeof U / sizeof U[0]); k++) {
+          int r = ev_dict_adapt_value(EV_LANG_ENUS, U[k].in, got, sizeof got);
+          if (r != 1 || strcmp(got, U[k].in) != 0) bad++;
+          r = ev_dict_adapt_value(EV_LANG_DEDE, U[k].in, got, sizeof got);
+          if (r != 1 || strcmp(got, U[k].in) != 0) bad++;
+      }
+      CHECK(bad == 0, "US English and German take every entry exactly as written");
+      CHECK(ev_dict_adapt_value(EV_LANG_ENGB, "`[.1Y.2fon]", got, 5) == -1, "a too-small buffer is refused, not cut"); }
+
     /* "Enable backquote voice tags": off (the default) makes every backtick a space, as NVDA's driver does */
     { char got[128];
       CHECK(ev_voice_tags() == 0, "voice tags are off by default");

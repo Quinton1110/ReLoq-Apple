@@ -354,6 +354,89 @@ static int  ev_dict_gen = 0;                 /* bumped whenever any configuratio
 /* One language's dictionaries (ev_bridge.h "LANGUAGES"). Every function below reaches the fields of
    `ev_cur`, the slot of the language in hand, which is only chosen and only read with ev_dict_lock
    held; the names are kept from when there was one language. */
+/* ---- ONE ENGLISH DICTIONARY FOR BOTH DIALECTS (ev_bridge.h "UK ENGLISH AND THE US FILES") ----
+   UK English has no community files of its own (no project publishes ENG*.dic), so it is given the US ones, and
+   every entry is adapted on the way in. Measured with ReLoq C 2026-11-22: the two dialects share the phoneme
+   symbols, and the UK engine takes all of the US files' symbols but two - the flap F and the glottal stop ? -
+   which make it read the whole `[...] annotation out as text ("backquote left bracket ...") in a whole-word entry
+   (a root entry it ignores). It drops a post-vocalic r itself ("kar" -> "ka"); an unstressed R (the -er of
+   "father", US `[.1fa.0DR]) it would say with its long NURSE vowel, where UK English has a schwa. So: an entry with
+   F or ? in an annotation is left out (the engine's own UK reading stays, as before), an unstressed R becomes x,
+   and anything else - respellings, the abbreviations, "iphone" `[.1Y.2fon] - goes in as it is. */
+static int ev_lang_adapts_us_entries(int32_t lang) { return lang == EV_LANG_ENGB; }
+
+/* In place (the result is never longer): 1 = keep, 0 = leave the entry out. */
+static int ev_uk_adapt_inplace(char *v)
+{
+    char *p = v;
+    while ((p = strstr(p, "`[")) != NULL) {
+        char stress = '1';                     /* no stress mark yet: treat as stressed (keeps R) */
+        for (p += 2; *p && *p != ']'; p++) {
+            if (*p == '.' && p[1] >= '0' && p[1] <= '3') stress = p[1];
+            else if (*p == 'F' || *p == '?') return 0;
+            else if (*p == 'R' && stress == '0') *p = 'x';
+        }
+    }
+    return 1;
+}
+
+int ev_dict_adapt_value(int32_t lang, const char *in, char *out, int room)
+{
+    size_t n;
+    if (!in || !out || room <= 0) return -1;
+    n = strlen(in);
+    if ((int)n >= room) return -1;
+    memcpy(out, in, n + 1);
+    if (!ev_lang_adapts_us_entries(lang)) return 1;
+    if (!ev_uk_adapt_inplace(out)) { out[0] = 0; return 0; }
+    return 1;
+}
+
+/* A loaded table, adapted for the slot's language (nothing happens for any other language). */
+static void ev_dict_table_adapt(ev_dict_table *t, int32_t lang)
+{
+    int i, o;
+    if (!t || !ev_lang_adapts_us_entries(lang)) return;
+    for (i = 0, o = 0; i < t->n; i++)
+        if (ev_uk_adapt_inplace((char *)t->pairs[i].val)) t->pairs[o++] = t->pairs[i];
+    t->n = o;
+}
+
+#include <unistd.h>   /* confstr, getpid */
+
+/* The adapted copy of a main or abbreviation file for a language that needs one (UK English), in this process's
+   temporary folder: <tmp>/reloq-dict-<lang>-<kind>.dic, written whole then renamed into place. Returns 0 and the
+   path, or -1 (no copy: the language does not adapt, the file does not read, or the folder cannot be written). */
+static int ev_dict_write_adapted(int32_t lang, const char *src, const char *kind, char *out, size_t room)
+{
+    char dir[1024], tmp[1100];
+    ev_dict_table *t;
+    FILE *f;
+    int i;
+    size_t k = 0;
+    out[0] = 0;
+    if (!ev_lang_adapts_us_entries(lang) || !src[0]) return -1;
+#if defined(__APPLE__)
+    k = confstr(_CS_DARWIN_USER_TEMP_DIR, dir, sizeof dir);
+#endif
+    if (k == 0 || k > sizeof dir) {
+        const char *e = getenv("TMPDIR");
+        snprintf(dir, sizeof dir, "%s", e && e[0] ? e : "/tmp");
+    }
+    snprintf(out, room, "%s%sreloq-dict-%x-%s.dic", dir, dir[strlen(dir) - 1] == '/' ? "" : "/", (unsigned)lang, kind);
+    if (strlen(out) >= EV_DICT_PATH_MAX) { out[0] = 0; return -1; }
+    t = ev_dict_table_load(src, EV_KEYS_EXACT);
+    if (!t) { out[0] = 0; return -1; }
+    ev_dict_table_adapt(t, lang);
+    snprintf(tmp, sizeof tmp, "%s.%d.tmp", out, (int)getpid());
+    f = fopen(tmp, "wb");
+    if (!f) { ev_dict_table_free(t); out[0] = 0; return -1; }
+    for (i = 0; i < t->n; i++) fprintf(f, "%s\t%s\n", t->pairs[i].key, t->pairs[i].val);
+    ev_dict_table_free(t);
+    if (fclose(f) != 0 || rename(tmp, out) != 0) { remove(tmp); out[0] = 0; return -1; }
+    return 0;
+}
+
 typedef struct ev_dict_slot {
     char path[3][1024];                       /* community main, root, abbr; "" = off */
     ev_dict_table *root_table;
@@ -366,6 +449,10 @@ typedef struct ev_dict_slot {
     ev_dict_table *user_abbr;                 /* exact keys */
     char skip[128];                           /* a word left out for one utterance (Listen); "" = none */
     int  community_off;                       /* the community files left out for one utterance */
+    /* UK English (ev_lang_adapts_us_entries): the community main and abbreviation files, adapted, written to this
+       process's temporary folder and loaded from there (eciLoadDict; handing ~1,200 entries over one by one with
+       eciUpdateDict took ReLoq C ~120 ms EACH, measured 2026-11-22). "" for every other language. */
+    char adapted[3][1024];
 } ev_dict_slot;
 
 /* This build's languages (ev_bridge.h "LANGUAGES"); US English first, always. */
@@ -440,11 +527,16 @@ int ev_dict_configure_lang(int32_t lang, const char *main_path, const char *root
         if (changed & 2) {
             ev_dict_table_free(ev_root_table);
             ev_root_table = ev_dict_path[1][0] ? ev_dict_table_load(ev_dict_path[1], EV_KEYS_LOWER) : NULL;
+            ev_dict_table_adapt(ev_root_table, lang);
         }
         if (changed & 1) {
             ev_dict_table_free(ev_main_ci_table);
             ev_main_ci_table = ev_dict_path[0][0] ? ev_dict_table_load(ev_dict_path[0], EV_KEYS_MULTICASE) : NULL;
+            ev_dict_table_adapt(ev_main_ci_table, lang);
+            ev_dict_write_adapted(lang, ev_dict_path[0], "main", slot->adapted[0], sizeof slot->adapted[0]);
         }
+        if (changed & 4)
+            ev_dict_write_adapted(lang, ev_dict_path[2], "abbr", slot->adapted[2], sizeof slot->adapted[2]);
         ev_dict_gen++;
     }
     pthread_mutex_unlock(&ev_dict_lock);
@@ -1137,10 +1229,14 @@ static void ev_voice_prepare_dict(ev_voice *v, const char *bytes)
             v->dict = eciNewDict(v->h);
             if (v->dict) {
                 int i;
+                /* UK English loads the adapted copies; a language that adapts but has none (it could not be
+                   written) loads nothing rather than the US entries as they are */
                 if (ev_dict_path[0][0] && !ev_cur->community_off)
-                    v->main_rc = eciLoadDict(v->h, v->dict, eciMainDict, ev_dict_path[0]);
+                    v->main_rc = !ev_lang_adapts_us_entries(v->lang) ? eciLoadDict(v->h, v->dict, eciMainDict, ev_dict_path[0])
+                               : ev_cur->adapted[0][0] ? eciLoadDict(v->h, v->dict, eciMainDict, ev_cur->adapted[0]) : -1;
                 if (ev_dict_path[2][0] && !ev_cur->community_off)
-                    v->abbr_rc = eciLoadDict(v->h, v->dict, eciAbbvDict, ev_dict_path[2]);
+                    v->abbr_rc = !ev_lang_adapts_us_entries(v->lang) ? eciLoadDict(v->h, v->dict, eciAbbvDict, ev_dict_path[2])
+                               : ev_cur->adapted[2][0] ? eciLoadDict(v->h, v->dict, eciAbbvDict, ev_cur->adapted[2]) : -1;
                 /* the user's own whole words and abbreviations on top: an entry with a community
                    entry's key replaces it (eciUpdateDict over a loaded key, measured 2026-09-24) */
                 v->user_added = 0;
