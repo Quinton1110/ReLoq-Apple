@@ -10,8 +10,8 @@ The languages are English (United States), English (United Kingdom), Spanish (Sp
 
 Ready to install builds are on the downloads page: https://quintonwilliams.me/reloq-apple/
 
-- iPhone and iPad: [ReLoq-Apple-0.1.4.ipa](https://quintonwilliams.me/reloq-apple/ReLoq-Apple-0.1.4.ipa)
-- Mac, Apple Silicon only: [ReLoq-Apple-0.1.4-mac.zip](https://quintonwilliams.me/reloq-apple/ReLoq-Apple-0.1.4-mac.zip)
+- iPhone and iPad: [ReLoq-Apple-0.1.5.ipa](https://quintonwilliams.me/reloq-apple/ReLoq-Apple-0.1.5.ipa)
+- Mac, Apple Silicon only: [ReLoq-Apple-0.1.5-mac.zip](https://quintonwilliams.me/reloq-apple/ReLoq-Apple-0.1.5-mac.zip)
 - AltStore source: `https://quintonwilliams.me/reloq-apple/source.json`
 
 The downloads page lists each file's size and SHA-256.
