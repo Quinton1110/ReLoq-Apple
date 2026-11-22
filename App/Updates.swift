@@ -4,9 +4,10 @@
 //
 //  - While the app is open, Sparkle's standard updater (SPUStandardUpdaterController) checks on its own schedule
 //    (Info-macOS.plist: SUEnableAutomaticChecks, SUScheduledCheckInterval one day, SUAutomaticallyUpdate NO, so
-//    it always asks before installing), and "Check for Updates..." in the app menu checks at once. The Updates
-//    section's "Check for app updates" picker (every hour, 6 hours, day or week) changes the interval for the app and,
-//    through the app group (UpdateFeed.checkIntervalKey), for the helper.
+//    it always asks before installing), and "Check for Updates..." in the app menu checks at once. The settings are
+//    the app menu's "Updates" submenu (UpdatesMenu): Check Automatically, Also Check When ReLoq Apple Is Closed, and
+//    Update Frequency (Every Hour, Every 6 Hours, Every Day, Every Week), which changes the interval for the app and, through the app group
+//    (UpdateFeed.checkIntervalKey), for the helper.
 //  - While it is closed, "ReLoq Apple Updates" (UpdateChecker/, a login item inside this app) checks and posts a
 //    notification; opening the notification opens this app (reloqapple-updates:check), which shows Sparkle's
 //    standard update window. The helper never downloads or installs anything. After an update it notices its app was
@@ -41,7 +42,7 @@ enum UpdateFeed {
     static let checkIntervalChanged = "ZGJQ5DZFK2.com.quinton.eloquencevoices.checkIntervalChanged"
     /// The choices; Sparkle 2.10.1 never checks more often than once an hour (SPUUpdaterSettings.minimumUpdateCheckInterval).
     static let intervals: [(seconds: Double, title: String)] = [
-        (3600, "Every hour"), (6 * 3600, "Every 6 hours"), (86400, "Every day"), (7 * 86400, "Every week")]
+        (3600, "Every Hour"), (6 * 3600, "Every 6 Hours"), (86400, "Every Day"), (7 * 86400, "Every Week")]   // "Update Frequency" > ...
     static let defaultInterval: Double = 86400   // SUScheduledCheckInterval in Info-macOS.plist
 #if EV_SPARKLE_TEST
     /// Test builds only (EV_SPARKLE_TEST): a feed served on this Mac.
@@ -95,9 +96,12 @@ final class AppUpdates: NSObject, ObservableObject, SPUUpdaterDelegate {
 #endif
         NSLog("ReLoqUpdates: check interval %.0f s", controller.updater.updateCheckInterval)
         refreshBackgroundStatus()
+        // the login item can be turned off or need approval in System Settings: re-read it whenever the app comes back
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in self?.refreshBackgroundStatus() }.store(in: &observers)
     }
 
-    /// "Check for Updates..." (the app menu and the Updates section).
+    /// "Check for Updates..." (the app menu).
     func checkForUpdates() { controller.checkForUpdates(nil) }
 
     /// The helper's notification (reloqapple-updates:check): right after launch Sparkle is still starting and would
@@ -114,13 +118,13 @@ final class AppUpdates: NSObject, ObservableObject, SPUUpdaterDelegate {
         controller.checkForUpdates(nil)
     }
 
-    /// "Check for updates automatically": Sparkle's own setting; off also turns the background checker off.
+    /// Updates > "Check Automatically": Sparkle's own setting; off also turns the background checker off.
     func setAutomaticChecks(_ on: Bool) {
         controller.updater.automaticallyChecksForUpdates = on
         if !on { setBackgroundChecks(false) }
     }
 
-    /// "Check for app updates": how often, for the app and the background checker alike. Sparkle reschedules the app's
+    /// Updates > "Update Frequency": how often, for the app and the background checker alike. Sparkle reschedules the app's
     /// next check itself; the helper sees the app-group value change and does the same.
     func setCheckInterval(_ seconds: Double) {
         let s = max(seconds, 3600)   // Sparkle's minimum (it would round anything shorter up to an hour anyway)
@@ -132,7 +136,7 @@ final class AppUpdates: NSObject, ObservableObject, SPUUpdaterDelegate {
         NSLog("ReLoqUpdates: check interval set to %.0f s", s)
     }
 
-    /// "Also check when ReLoq Apple is closed": the helper's login item.
+    /// Updates > "Also Check When ReLoq Apple Is Closed": the helper's login item.
     func setBackgroundChecks(_ on: Bool) {
         do {
             if on {
@@ -180,7 +184,7 @@ final class AppUpdates: NSObject, ObservableObject, SPUUpdaterDelegate {
     }
 }
 
-/// The app menu's "Check for Updates..." (after "About ReLoq Apple", where Mac apps put it).
+/// The app menu's "Check for Updates..." (after "About ReLoq Apple", where Mac apps put it); "Updates" follows it.
 struct CheckForUpdatesCommand: View {
     @ObservedObject var updates: AppUpdates
     var body: some View {
@@ -190,33 +194,31 @@ struct CheckForUpdatesCommand: View {
     }
 }
 
-/// The Updates section of the window.
-struct UpdatesSection: View {
+/// The app menu's "Updates" submenu (after "Check for Updates..."), the one place for the update settings (Quinton,
+/// 2026-11-21: "I think it should be a submenu in the menu bar."). SwiftUI makes native menu items of these: a Toggle
+/// is an item with a checkmark, a Picker a submenu of items with one checkmark, and VoiceOver reads them "checked" /
+/// "unchecked" (AXMenuItemMarkChar). The items follow AppUpdates' published state, so they are right whenever the
+/// menu opens; the login item's status is re-read when the app becomes active (it can change in System Settings).
+struct UpdatesMenu: View {
     @ObservedObject var updates: AppUpdates
     var body: some View {
-        Section("Updates") {
-            Toggle("Check for updates automatically", isOn: Binding(
+        Menu("Updates") {
+            Toggle("Check Automatically", isOn: Binding(
                 get: { updates.automaticChecks }, set: { updates.setAutomaticChecks($0) }))
-            // "app" on purpose: the dictionary section has its own "Check for updates" picker, and VoiceOver reads
-            // both by name
-            Picker("Check for app updates", selection: Binding(
+            Toggle("Also Check When ReLoq Apple Is Closed", isOn: Binding(
+                get: { updates.backgroundChecks }, set: { updates.setBackgroundChecks($0) }))
+                .disabled(!updates.automaticChecks)
+            if !updates.backgroundStatus.isEmpty {
+                Text(updates.backgroundStatus)
+            }
+            Picker("Update Frequency", selection: Binding(
                 get: { UpdateFeed.intervals.contains { $0.seconds == updates.checkInterval } ? updates.checkInterval
                                                                                               : UpdateFeed.defaultInterval },
                 set: { updates.setCheckInterval($0) })) {
                 ForEach(UpdateFeed.intervals, id: \.seconds) { Text($0.title).tag($0.seconds) }
             }
             .disabled(!updates.automaticChecks)
-            Toggle("Also check when ReLoq Apple is closed", isOn: Binding(
-                get: { updates.backgroundChecks }, set: { updates.setBackgroundChecks($0) }))
-                .disabled(!updates.automaticChecks)
-            if !updates.backgroundStatus.isEmpty {
-                Text(updates.backgroundStatus).font(.footnote)
-            }
-            Button("Check for Updates\u{2026}") { updates.checkForUpdates() }
-                .disabled(!updates.canCheckForUpdates)
-                .accessibilityLabel("Check for Updates")
         }
-        .onAppear { updates.refreshBackgroundStatus() }
     }
 }
 
