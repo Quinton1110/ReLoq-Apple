@@ -4,7 +4,9 @@
 //
 //  - While the app is open, Sparkle's standard updater (SPUStandardUpdaterController) checks on its own schedule
 //    (Info-macOS.plist: SUEnableAutomaticChecks, SUScheduledCheckInterval one day, SUAutomaticallyUpdate NO, so
-//    it always asks before installing), and "Check for Updates..." in the app menu checks at once.
+//    it always asks before installing), and "Check for Updates..." in the app menu checks at once. The Updates
+//    section's "Check for app updates" picker (every hour, 6 hours, day or week) changes the interval for the app and,
+//    through the app group (UpdateFeed.checkIntervalKey), for the helper.
 //  - While it is closed, "ReLoq Apple Updates" (UpdateChecker/, a login item inside this app) checks and posts a
 //    notification; opening the notification opens this app (reloqapple-updates:check), which shows Sparkle's
 //    standard update window. The helper never downloads or installs anything. After an update it notices its app was
@@ -32,6 +34,15 @@ enum UpdateFeed {
     /// The Mac app group (AppGroup.macDefault): where "Skip This Version" is shared with the helper.
     static let appGroup = "ZGJQ5DZFK2.com.quinton.eloquencevoices"
     static let skippedBuildKey = "updates.skippedBuild"
+    /// How often to check, in seconds (the app's Sparkle setting, mirrored for the helper, which applies it at once).
+    static let checkIntervalKey = "updates.checkInterval"
+    /// Posted after the interval changes, so a running helper applies it at once (a Darwin notification, named with the
+    /// app group as sandboxing requires).
+    static let checkIntervalChanged = "ZGJQ5DZFK2.com.quinton.eloquencevoices.checkIntervalChanged"
+    /// The choices; Sparkle 2.10.1 never checks more often than once an hour (SPUUpdaterSettings.minimumUpdateCheckInterval).
+    static let intervals: [(seconds: Double, title: String)] = [
+        (3600, "Every hour"), (6 * 3600, "Every 6 hours"), (86400, "Every day"), (7 * 86400, "Every week")]
+    static let defaultInterval: Double = 86400   // SUScheduledCheckInterval in Info-macOS.plist
 #if EV_SPARKLE_TEST
     /// Test builds only (EV_SPARKLE_TEST): a feed served on this Mac.
     static let testURL = "http://127.0.0.1:8765/appcast.xml"
@@ -46,6 +57,7 @@ final class AppUpdates: NSObject, ObservableObject, SPUUpdaterDelegate {
     @Published private(set) var automaticChecks = true
     @Published private(set) var backgroundChecks = false
     @Published private(set) var backgroundStatus = ""
+    @Published private(set) var checkInterval: Double = UpdateFeed.defaultInterval
 
     private var controller: SPUStandardUpdaterController!
     private var observers: [AnyCancellable] = []
@@ -66,6 +78,9 @@ final class AppUpdates: NSObject, ObservableObject, SPUUpdaterDelegate {
             DispatchQueue.main.async { self?.checkIfWaiting() }   // after the value has changed
         }.store(in: &observers)
         updater.publisher(for: \.automaticallyChecksForUpdates).sink { [weak self] in self?.automaticChecks = $0 }.store(in: &observers)
+        // the helper reads the interval from the app group: keep it equal to the app's own
+        checkInterval = updater.updateCheckInterval
+        UserDefaults(suiteName: UpdateFeed.appGroup)?.set(checkInterval, forKey: UpdateFeed.checkIntervalKey)
         // The first Sparkle-enabled launch turns the background checker on (Quinton, 2026-11-21: "both kinds of
         // checking"); after that only the switch changes it, so turning it off stays off.
         if !defaults.bool(forKey: Self.registeredOnceKey) {
@@ -73,9 +88,12 @@ final class AppUpdates: NSObject, ObservableObject, SPUUpdaterDelegate {
             if updater.automaticallyChecksForUpdates { setBackgroundChecks(true) }
         }
 #if EV_SPARKLE_TEST
-        // test builds only: -evBackgroundChecks on|off does what the switch does (tests drive it without the UI)
+        // test builds only: -evBackgroundChecks on|off and -evCheckInterval <seconds> do what the controls do (tests
+        // drive them without the UI)
         if let arg = defaults.string(forKey: "evBackgroundChecks") { setBackgroundChecks(arg == "on") }
+        if defaults.object(forKey: "evCheckInterval") != nil { setCheckInterval(defaults.double(forKey: "evCheckInterval")) }
 #endif
+        NSLog("ReLoqUpdates: check interval %.0f s", controller.updater.updateCheckInterval)
         refreshBackgroundStatus()
     }
 
@@ -100,6 +118,18 @@ final class AppUpdates: NSObject, ObservableObject, SPUUpdaterDelegate {
     func setAutomaticChecks(_ on: Bool) {
         controller.updater.automaticallyChecksForUpdates = on
         if !on { setBackgroundChecks(false) }
+    }
+
+    /// "Check for app updates": how often, for the app and the background checker alike. Sparkle reschedules the app's
+    /// next check itself; the helper sees the app-group value change and does the same.
+    func setCheckInterval(_ seconds: Double) {
+        let s = max(seconds, 3600)   // Sparkle's minimum (it would round anything shorter up to an hour anyway)
+        controller.updater.updateCheckInterval = s
+        checkInterval = s
+        UserDefaults(suiteName: UpdateFeed.appGroup)?.set(s, forKey: UpdateFeed.checkIntervalKey)
+        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                             CFNotificationName(UpdateFeed.checkIntervalChanged as CFString), nil, nil, true)
+        NSLog("ReLoqUpdates: check interval set to %.0f s", s)
     }
 
     /// "Also check when ReLoq Apple is closed": the helper's login item.
@@ -136,6 +166,10 @@ final class AppUpdates: NSObject, ObservableObject, SPUUpdaterDelegate {
     nonisolated func feedURLString(for updater: SPUUpdater) -> String? { UpdateFeed.testURL }
 #endif
 
+    nonisolated func updater(_ updater: SPUUpdater, willScheduleUpdateCheckAfterDelay delay: TimeInterval) {
+        NSLog("ReLoqUpdates: next check in %.0f s", delay)
+    }
+
     /// "Skip This Version" here also quiets the helper: it reads the skipped build from the app group.
     nonisolated func updater(_ updater: SPUUpdater, userDidMake choice: SPUUserUpdateChoice, forUpdate updateItem: SUAppcastItem,
                              state: SPUUserUpdateState) {
@@ -163,6 +197,15 @@ struct UpdatesSection: View {
         Section("Updates") {
             Toggle("Check for updates automatically", isOn: Binding(
                 get: { updates.automaticChecks }, set: { updates.setAutomaticChecks($0) }))
+            // "app" on purpose: the dictionary section has its own "Check for updates" picker, and VoiceOver reads
+            // both by name
+            Picker("Check for app updates", selection: Binding(
+                get: { UpdateFeed.intervals.contains { $0.seconds == updates.checkInterval } ? updates.checkInterval
+                                                                                              : UpdateFeed.defaultInterval },
+                set: { updates.setCheckInterval($0) })) {
+                ForEach(UpdateFeed.intervals, id: \.seconds) { Text($0.title).tag($0.seconds) }
+            }
+            .disabled(!updates.automaticChecks)
             Toggle("Also check when ReLoq Apple is closed", isOn: Binding(
                 get: { updates.backgroundChecks }, set: { updates.setBackgroundChecks($0) }))
                 .disabled(!updates.automaticChecks)
