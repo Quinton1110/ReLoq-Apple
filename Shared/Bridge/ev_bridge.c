@@ -686,18 +686,66 @@ static uint32_t ev_utf8_at(const char *s, size_t n, size_t i, int *len)
     return ' ';
 }
 
+/* U+F8FF, the Apple logo (Apple's private use area): "Pay", "Pay with  Pay", "Watch".
+   VoiceOver names it only when it reads a single character; in running text the character itself reaches
+   the engine, which has no reading for it and drops it ("pay with pay"). It is said as the word "Apple",
+   in every language (a name), with a space added only where it would otherwise run into a word, so
+   "Pay" is "Apple Pay", "with  Pay" stays single-spaced, and "" is "Apple Apple". */
+#define EV_APPLE_LOGO 0xF8FFu
+#define EV_APPLE_WORD "Apple"
+#define EV_APPLE_ROOM 6        /* the most a logo's 3 UTF-8 bytes grow by: "Apple" plus a space each side */
+
+/* Could this character join a word (so "Apple" needs a space between them)? Letters and digits, ASCII or
+   not; not spaces, punctuation, symbols or the invisible format characters. */
+static int ev_wordish(uint32_t cp)
+{
+    if (cp < 0x80) return (cp >= '0' && cp <= '9') || (cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z');
+    if (cp < 0xC0 || cp == 0xD7 || cp == 0xF7) return 0;        /* Latin-1 punctuation, symbols, NBSP */
+    if (cp >= 0x2000 && cp <= 0x2BFF) return 0;                 /* general punctuation ... arrows, symbols */
+    if (cp >= 0x3000 && cp <= 0x303F) return 0;                 /* CJK punctuation */
+    return !ev_is_format_char(cp);
+}
+
+static size_t ev_apple_logos(const char *s)
+{
+    size_t k = 0;
+    const char *p = s;
+    while ((p = strstr(p, "\xef\xa3\xbf")) != NULL) { k++; p += 3; }
+    return k;
+}
+
+/* Writes the logo's word at out[o]; `prev` is the previous character of the input (0 at the start, format
+   characters skipped), utf8[next] the one after the logo. Returns the new length. */
+static size_t ev_put_apple(char *out, size_t o, uint32_t prev, const char *utf8, size_t n, size_t next)
+{
+    if (prev == EV_APPLE_LOGO || ev_wordish(prev)) out[o++] = ' ';
+    memcpy(out + o, EV_APPLE_WORD, sizeof EV_APPLE_WORD - 1);
+    o += sizeof EV_APPLE_WORD - 1;
+    while (next < n) {              /* the next visible character: a format character between changes nothing */
+        int len;
+        uint32_t cp = ev_utf8_at(utf8, n, next, &len);
+        if (ev_is_format_char(cp)) { next += (size_t)len; continue; }
+        if (cp != EV_APPLE_LOGO && ev_wordish(cp)) out[o++] = ' ';   /* a second logo adds its own space */
+        break;
+    }
+    return o;
+}
+
 /* The Western European languages: UTF-8 folded to Windows-1252 bytes. */
 static char *ev_text_to_bytes(const char *utf8)
 {
     size_t n = strlen(utf8);
-    char *out = (char *)malloc(n + 1);
+    char *out = (char *)malloc(n + EV_APPLE_ROOM * ev_apple_logos(utf8) + 1);
     size_t i = 0, o = 0;
+    uint32_t prev = 0;
     if (!out) return NULL;
     while (i < n) {
         int len, hb;
         uint32_t cp = ev_utf8_at(utf8, n, i, &len);
         i += (size_t)len;
         if (ev_is_format_char(cp)) continue;
+        if (cp == EV_APPLE_LOGO) { o = ev_put_apple(out, o, prev, utf8, n, i); prev = cp; continue; }
+        prev = cp;
         if (cp < 0x80) out[o++] = (char)cp;
         else if (cp >= 0xA0 && cp <= 0xFF) out[o++] = (char)cp;          /* Latin-1 */
         else if (cp == 0x2018 || cp == 0x2019) out[o++] = '\'';
@@ -715,13 +763,16 @@ static char *ev_text_to_bytes(const char *utf8)
 static char *ev_text_utf8_clean(const char *utf8)
 {
     size_t n = strlen(utf8);
-    char *out = (char *)malloc(n + 1);
+    char *out = (char *)malloc(n + EV_APPLE_ROOM * ev_apple_logos(utf8) + 1);
     size_t i = 0, o = 0;
+    uint32_t prev = 0;
     if (!out) return NULL;
     while (i < n) {
         int len;
         uint32_t cp = ev_utf8_at(utf8, n, i, &len);
-        if (!ev_is_format_char(cp)) { memcpy(out + o, utf8 + i, (size_t)len); o += (size_t)len; }
+        if (cp == EV_APPLE_LOGO) o = ev_put_apple(out, o, prev, utf8, n, i + (size_t)len);
+        else if (!ev_is_format_char(cp)) { memcpy(out + o, utf8 + i, (size_t)len); o += (size_t)len; }
+        if (!ev_is_format_char(cp)) prev = cp;
         i += (size_t)len;
     }
     out[o] = 0;

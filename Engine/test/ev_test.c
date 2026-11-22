@@ -285,6 +285,34 @@ int main(int argc, char **argv)
                    got, sizeof got);
       CHECK(strcmp(got, "Message from Maybe Zoe, I'm hello world x caf\xe9") == 0, "format characters dropped: \"%s\"", got); }
 
+    /* The Apple logo (U+F8FF, private use) is said as "Apple": spaced only where it would run into a word, so
+       no double spaces (they would change the pausing), in the Windows-1252 languages and the UTF-8 ones. */
+    { static const struct { const char *in, *out; } A[] = {
+        { "Pay with \xef\xa3\xbf Pay", "Pay with Apple Pay" },       /* Quinton's "pay with pay", 2026-11-21 */
+        { "\xef\xa3\xbfPay", "Apple Pay" },                          { "\xef\xa3\xbfWatch Series 9", "Apple Watch Series 9" },
+        { "\xef\xa3\xbf", "Apple" },                                 { "Buy with \xef\xa3\xbfPay.", "Buy with Apple Pay." },
+        { "(\xef\xa3\xbf)", "(Apple)" },                             { "x\xef\xa3\xbfy", "x Apple y" },
+        { "\xef\xa3\xbf\xef\xa3\xbf", "Apple Apple" },               { "\xef\xa3\xbf \xef\xa3\xbf", "Apple Apple" },
+        { "\xe2\x80\x8e\xef\xa3\xbf\xe2\x80\x8ePay", "Apple Pay" },  /* an LRM either side changes nothing */
+        { "caf\xc3\xa9\xef\xa3\xbf", "caf\xe9 Apple" },               { "\xef\xa3\xbf\xe2\x80\x99s", "Apple's" },
+      };
+      char got[256]; int k, bad = 0;
+      ev_set_text_prepass(0);      /* the logo alone; the US English pre-pass is checked below */
+      for (k = 0; k < (int)(sizeof A / sizeof A[0]); k++) {
+          ev_text_fold(A[k].in, got, sizeof got);
+          if (strcmp(got, A[k].out) != 0) { bad++; printf("     logo \"%s\" -> \"%s\" (want \"%s\")\n", A[k].in, got, A[k].out); }
+      }
+      ev_set_text_prepass(1);
+      CHECK(bad == 0, "Apple logo said as Apple: %d of %d", (int)(sizeof A / sizeof A[0]) - bad, (int)(sizeof A / sizeof A[0]));
+      ev_text_fold("Pay with \xef\xa3\xbf Pay", got, sizeof got);
+      CHECK(strcmp(got, "Pay with Apple Pay") == 0, "and with the US English pre-pass on: \"%s\"", got);
+      ev_text_fold_lang("\xef\xa3\xbfPay \xe3\x81\xa7", EV_LANG_JAJP, got, sizeof got);
+      CHECK(strcmp(got, "Apple Pay \xe3\x81\xa7") == 0, "Japanese (UTF-8 to the engine): \"%s\"", got);
+      ev_text_fold_lang("\xe2\x80\x8e\xef\xa3\xbf\xe2\x80\x8ePay", EV_LANG_PLPL, got, sizeof got);
+      CHECK(strcmp(got, "Apple Pay") == 0, "Polish (UTF-8), LRMs around it: \"%s\"", got);
+      ev_text_fold_lang("\xef\xa3\xbf" "Pay", EV_LANG_FRFR, got, sizeof got);
+      CHECK(strcmp(got, "Apple Pay") == 0, "French: \"%s\"", got); }
+
     /* "Enable backquote voice tags": off (the default) makes every backtick a space, as NVDA's driver does */
     { char got[128];
       CHECK(ev_voice_tags() == 0, "voice tags are off by default");
