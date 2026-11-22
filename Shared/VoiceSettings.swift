@@ -282,6 +282,16 @@ final class VoiceSettingsStore {
         }
     }
 
+    /// "VoiceOver pauses" (SSML.BoundaryPauses): the stored one, else Normal. Normal is stored as no value. The
+    /// extension reads it for every request (EloquenceVoicesProvider) and passes it to the segment loop.
+    var voiceOverPauses: SSML.BoundaryPauses {
+        get { defaults.string(forKey: SSML.BoundaryPauses.key).flatMap(SSML.BoundaryPauses.init(rawValue:)) ?? .normal }
+        set {
+            if newValue == .normal { defaults.removeObject(forKey: SSML.BoundaryPauses.key) }
+            else { defaults.set(newValue.rawValue, forKey: SSML.BoundaryPauses.key) }
+        }
+    }
+
     /// Hands "Shorten pauses" to the bridge (configureEngine calls this before every request).
     func applyPauses() {
         ev_set_pause_mode(shortenPauses.mode)

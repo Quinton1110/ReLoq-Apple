@@ -175,6 +175,38 @@ enum SSML {
 
     // MARK: - Pause lengths
 
+    /// "VoiceOver pauses": how long the silences at VoiceOver's <s> / <p> element boundaries are (the gaps between
+    /// "Finder", "Desktop", "Macintosh HD", "selected"). Only those: an explicit <break> keeps its length, and the
+    /// pauses the engine adds itself are "Shorten pauses" (PauseSetting), a separate setting. Normal is today's
+    /// length exactly; the others scale the whole boundary silence (its minimum included). Asked for by Fubsepude
+    /// (Mastodon, 2026-11-22): long gaps inside VoiceOver phrases even with Shorten pauses on Always.
+    enum BoundaryPauses: String, CaseIterable, Identifiable {
+        case normal, short, minimal
+        var id: String { rawValue }
+        static let key = "engine.voiceOverPauses"
+        var title: String {
+            switch self {
+            case .normal: return "Normal"
+            case .short: return "Short"
+            case .minimal: return "Minimal"
+            }
+        }
+        /// Never less than this at a boundary when shortened: at 2x speed Minimal alone would be 20 ms and the words
+        /// begin to run together (measured with ReLoq C, 2026-11-22).
+        static let floorMs = 30
+        /// The share of the Normal boundary silence that is inserted. Measured with ReLoq C on VoiceOver's
+        /// <s>Finder</s><s>Desktop</s><s>Macintosh HD</s><s>selected</s> at natural speed with Shorten pauses on
+        /// Always (which removes the engine's own ~400 ms end-of-text pause after each part): about 150 ms between the
+        /// words at Normal, 75 ms at Short, 40 ms at Minimal.
+        var factor: Double {
+            switch self {
+            case .normal: return 1
+            case .short: return 0.5
+            case .minimal: return 0.25
+            }
+        }
+    }
+
     /// Silence at an element boundary at natural speed. ClassicVoices calibrated these on 2026-09-22
     /// against Apple's voices rendering VoiceOver's <s>label</s><s>trait</s> shape (Samantha 240-275 ms
     /// at natural speed). Re-measure with the real Eloquence engine: its own trailing silence adds to
@@ -187,17 +219,20 @@ enum SSML {
     static let minPhraseGapMs = 50
     static let minSentenceGapMs = 90
 
-    static func silenceMs(_ p: Pause, after text: String, speed: Double) -> Int {
-        if p.hasBreak { return p.timeMs + scaled(p.strengthMs, speed: speed) }
+    static func silenceMs(_ p: Pause, after text: String, speed: Double, boundaries: BoundaryPauses = .normal) -> Int {
+        if p.hasBreak { return p.timeMs + scaled(p.strengthMs, speed: speed) }   // explicit breaks: never scaled
+        let gap: Int
         switch p.boundary {
         case .none:
             return 0
         case .sentence:
-            return endsSentence(text) ? max(minSentenceGapMs, scaled(sentenceGapMs, speed: speed))
-                                      : max(minPhraseGapMs, scaled(phraseGapMs, speed: speed))
+            gap = endsSentence(text) ? max(minSentenceGapMs, scaled(sentenceGapMs, speed: speed))
+                                     : max(minPhraseGapMs, scaled(phraseGapMs, speed: speed))
         case .paragraph:
-            return max(minSentenceGapMs, scaled(paragraphGapMs, speed: speed))
+            gap = max(minSentenceGapMs, scaled(paragraphGapMs, speed: speed))
         }
+        if boundaries == .normal { return gap }
+        return max(BoundaryPauses.floorMs, Int((Double(gap) * boundaries.factor).rounded()))
     }
 
     /// A pause at natural speed, at `speed` x natural: shrinks a little slower than the speech itself

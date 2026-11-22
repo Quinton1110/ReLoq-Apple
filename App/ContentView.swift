@@ -36,6 +36,7 @@ struct ContentView: View {
     @State private var trebleDB = VoiceSettingsStore.shared.trebleDB
     @State private var mellow = VoiceSettingsStore.shared.mellow
     @State private var shortenPauses = VoiceSettingsStore.shared.shortenPauses
+    @State private var voiceOverPauses = VoiceSettingsStore.shared.voiceOverPauses
     @StateObject private var dictionary = DictionaryUpdater.shared
     @Environment(\.scenePhase) private var scenePhase
 
@@ -179,7 +180,8 @@ struct ContentView: View {
                     Text("Pronunciation dictionary")
                 }
 
-                if OutputSampleRate.available || ToneSetting.available || PauseSetting.available {
+                // always shown: VoiceOver pauses works with any engine
+                Group {
                     Section {
                         if OutputSampleRate.available {
                             Picker("Sample rate", selection: Binding(
@@ -214,6 +216,14 @@ struct ContentView: View {
                                 ForEach(PauseSetting.allCases) { p in Text(p.title).tag(p) }
                             }
                         }
+                        Picker("VoiceOver pauses", selection: Binding(
+                            get: { voiceOverPauses },
+                            set: { p in voiceOverPauses = p; store.voiceOverPauses = p })) {
+                            ForEach(SSML.BoundaryPauses.allCases) { p in Text(p.title).tag(p) }
+                        }
+                        // visible, not a VoiceOver-only hint
+                        Text("The gaps between the parts VoiceOver reads, like a name and \"selected\". Shorten pauses changes the engine's own pauses instead.")
+                            .font(.footnote)
                     }
                 }
 

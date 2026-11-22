@@ -105,5 +105,32 @@ let hostile = SSML.prosodyShape(#"<prosody pitch="say my secret words out loud p
 check(hostile == "P0{pitch=saymysecretwords} /P", "attribute values are filtered and cut to 16 characters: \(hostile)")
 check(SSML.prosodyShape("just words") == "none", "no markup -> none")
 
+// MARK: - VoiceOver pauses (SSML.BoundaryPauses, 2026-11-22): only the <s>/<p> boundary silences scale
+
+func vgaps(_ segs: [SSML.Segment], _ b: SSML.BoundaryPauses, speed: Double = 1) -> [Int] {
+    segs.map { SSML.silenceMs($0.pause, after: $0.text, speed: speed, boundaries: b) }
+}
+let finder = SSML.segments("<speak><s>Finder</s><s>Desktop</s><s>Macintosh HD</s><s>selected</s></speak>")
+check(vgaps(finder, .normal) == [150, 150, 150, 0], "VoiceOver pauses Normal: Finder | Desktop | Macintosh HD | selected \(vgaps(finder, .normal))")
+check(vgaps(finder, .short) == [75, 75, 75, 0], "Short: half \(vgaps(finder, .short))")
+check(vgaps(finder, .minimal) == [38, 38, 38, 0], "Minimal: a quarter \(vgaps(finder, .minimal))")
+check(vgaps(finder, .short, speed: 2) == [40, 40, 40, 0] && vgaps(finder, .minimal, speed: 2) == [30, 30, 30, 0],
+      "at 2x speed: Short \(vgaps(finder, .short, speed: 2)), Minimal held at the 30 ms floor \(vgaps(finder, .minimal, speed: 2))")
+let paras = SSML.segments("<speak><p><s>Mail.</s><s>Inbox</s></p><p><s>3 unread messages.</s></p></speak>")
+check(vgaps(paras, .normal) == [380, 450, 0] && vgaps(paras, .short) == [190, 225, 0] && vgaps(paras, .minimal) == [95, 113, 0],
+      "sentence and paragraph boundaries scale too: \(vgaps(paras, .normal)) \(vgaps(paras, .short)) \(vgaps(paras, .minimal))")
+let breaks = SSML.segments(#"<speak><s>a</s><break time="300ms"/><s>b</s><break strength="strong"/><s>c</s></speak>"#)
+check(vgaps(breaks, .minimal) == vgaps(breaks, .normal) && vgaps(breaks, .short, speed: 1.7) == vgaps(breaks, .normal, speed: 1.7),
+      "explicit <break> time and strength keep their length at every option: \(vgaps(breaks, .minimal))")
+var same = true
+for sp in stride(from: 0.25, through: 4.0, by: 0.05) {
+    for seg in finder + paras + breaks + SSML.segments("<speak><s>One.</s><s>two</s><p>three</p></speak>") {
+        if SSML.silenceMs(seg.pause, after: seg.text, speed: sp, boundaries: .normal) != seg.silenceMs(speed: sp) { same = false }
+    }
+}
+check(same, "Normal is exactly the old silence at every speed 0.25x-4x (byte-identical output)")
+check(SSML.BoundaryPauses.allCases.map(\.title) == ["Normal", "Short", "Minimal"] && SSML.BoundaryPauses.key == "engine.voiceOverPauses",
+      "titles and the stored key")
+
 print("\(passes) ok, \(failures) failed")
 exit(failures == 0 ? 0 : 1)

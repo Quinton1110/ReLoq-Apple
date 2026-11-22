@@ -286,6 +286,7 @@ public final class EloquenceVoicesProvider: AVSpeechSynthesisProviderAudioUnit {
             defer { stream.producerEnded(g) }
             var frames = 0
             let rc = EloquenceEngine.shared.speak(segments: segments, voice: def, settings: settings, request: request,
+                                                  boundaries: VoiceSettingsStore.shared.voiceOverPauses,   // "VoiceOver pauses", per request
                                                   onPCM: { pcm in frames += pcm.count; return stream.append(g, pcm) },
                                                   silence: { ms in stream.appendSilence(g, ms: ms) })
             if rc < 0 { log.error("synthesis failed voice=\(def.slug, privacy: .public)") }

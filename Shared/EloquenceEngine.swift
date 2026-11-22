@@ -205,7 +205,7 @@ final class EloquenceEngine {
     /// <prosody> it sits in) on top of `request`'s; only the speed is one value for the whole request.
     @discardableResult
     func speak(segments: [SSML.Segment], voice def: EloquenceVoiceDef, settings: VoiceSettings,
-               request: ev_request,
+               request: ev_request, boundaries: SSML.BoundaryPauses = .normal,
                onPCM: @escaping (UnsafeBufferPointer<Int16>) -> Bool,
                silence: @escaping (Int) -> Bool) -> Int32 {
         let speed = Self.effectiveSpeed(settings: settings, factor: request.prosody.speed)
@@ -226,7 +226,7 @@ final class EloquenceEngine {
                 if rc == 1 || !ok { return 1 }
                 if rc < 0 { failed = true }
             }
-            let ms = seg.silenceMs(speed: speed)
+            let ms = SSML.silenceMs(seg.pause, after: seg.text, speed: speed, boundaries: boundaries)
             if seg.pause.hasBreak {
                 if ms > 0 && !silence(ms) { return 1 }
             } else if ms > 0 {
