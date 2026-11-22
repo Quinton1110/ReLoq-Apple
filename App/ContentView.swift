@@ -229,6 +229,10 @@ struct ContentView: View {
                         set: { on in voiceTags = on; store.voiceTagsEnabled = on }))
                 }
 
+#if os(macOS)
+                UpdatesSection(updates: AppUpdates.shared)
+#endif
+
                 Section("This build") {
                     Text(EloquenceEngine.enginePresent
                          ? "Speech engine: \(EloquenceEngine.engineDescription)."

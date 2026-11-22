@@ -32,5 +32,33 @@
 	<true/>
 	<key>NSSupportsSuddenTermination</key>
 	<true/>
+	<!-- Sparkle 2 (App/Updates.swift). The feed and the EdDSA public key every update must be signed with
+	     (private key: the login keychain, account reloq-apple; tools/release.sh signs with it). -->
+	<key>SUFeedURL</key>
+	<string>https://quintonwilliams.me/reloq-apple/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>P83PrT8ZtM997ztxKLBfrV1h0pq+bdzrhC31kKjanN8=</string>
+	<!-- Checks without asking first, at launch when due and once a day while open; always asks before installing. -->
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<!-- Sandboxed: install through the installer XPC service inside Sparkle.framework. -->
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+	<!-- What the background checker's notification opens (UpdateChecker/, App/Updates.swift). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.quinton.eloquencevoices.updates</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>reloqapple-updates</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
