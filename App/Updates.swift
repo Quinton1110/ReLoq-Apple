@@ -5,7 +5,7 @@
 //  - While the app is open, Sparkle's standard updater (SPUStandardUpdaterController) checks on its own schedule
 //    (Info-macOS.plist: SUEnableAutomaticChecks, SUScheduledCheckInterval one day, SUAutomaticallyUpdate NO, so
 //    it always asks before installing), and "Check for Updates..." in the app menu checks at once. The settings are
-//    the app menu's "Updates" submenu (UpdatesMenu): Check Automatically, Also Check When ReLoq Apple Is Closed, and
+//    the app menu's "Updates" submenu (UpdatesMenu): Check Now (= Check for Updates...), Check Automatically, Also Check When ReLoq Apple Is Closed, and
 //    Update Frequency (Every Hour, Every 6 Hours, Every Day, Every Week), which changes the interval for the app and, through the app group
 //    (UpdateFeed.checkIntervalKey), for the helper.
 //  - While it is closed, "ReLoq Apple Updates" (UpdateChecker/, a login item inside this app) checks and posts a
@@ -184,13 +184,16 @@ final class AppUpdates: NSObject, ObservableObject, SPUUpdaterDelegate {
     }
 }
 
-/// The app menu's "Check for Updates..." (after "About ReLoq Apple", where Mac apps put it); "Updates" follows it.
+/// "Check for Updates...": in the app menu after "About ReLoq Apple" (where Mac apps put it), and again, as
+/// "Check Now", the first item of the Updates submenu.
 struct CheckForUpdatesCommand: View {
     @ObservedObject var updates: AppUpdates
+    var title = "Check for Updates\u{2026}"
+    var spoken = "Check for Updates"   // VoiceOver: the name without the ellipsis
     var body: some View {
-        Button("Check for Updates\u{2026}") { updates.checkForUpdates() }
+        Button(title) { updates.checkForUpdates() }
             .disabled(!updates.canCheckForUpdates)
-            .accessibilityLabel("Check for Updates")
+            .accessibilityLabel(spoken)
     }
 }
 
@@ -203,6 +206,10 @@ struct UpdatesMenu: View {
     @ObservedObject var updates: AppUpdates
     var body: some View {
         Menu("Updates") {
+            // the same item as "Check for Updates..." after About (his 22:46: "The check for updates button should also
+            // be in that menu."; 23:00: "...called check now"): one view, one action, enabled and disabled together
+            CheckForUpdatesCommand(updates: updates, title: "Check Now", spoken: "Check Now")
+            Divider()
             Toggle("Check Automatically", isOn: Binding(
                 get: { updates.automaticChecks }, set: { updates.setAutomaticChecks($0) }))
             Toggle("Also Check When ReLoq Apple Is Closed", isOn: Binding(
